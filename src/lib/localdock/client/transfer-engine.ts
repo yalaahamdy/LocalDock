@@ -163,6 +163,27 @@ function downloadUrlOf(item: TransferItem): string {
 }
 
 function saveBlob(blob: Blob, filename: string) {
+  // If running inside LocalDock Android native shell:
+  if (
+    typeof window !== "undefined" &&
+    typeof (window as unknown as { LocalDockAndroid?: { saveBlob?: (b: string, n: string, m: string) => void } })
+      .LocalDockAndroid?.saveBlob === "function"
+  ) {
+    try {
+      const reader = new FileReader();
+      reader.onloadend = () => {
+        const res = (reader.result as string) || "";
+        const base64 = res.includes(",") ? res.split(",")[1] : res;
+        (window as unknown as { LocalDockAndroid: { saveBlob: (b: string, n: string, m: string) => void } })
+          .LocalDockAndroid.saveBlob(base64, filename, blob.type || "application/octet-stream");
+      };
+      reader.readAsDataURL(blob);
+      return;
+    } catch {
+      /* fallback to standard browser download below */
+    }
+  }
+
   const url = URL.createObjectURL(blob);
   const a = document.createElement("a");
   a.href = url;
@@ -742,6 +763,39 @@ class TransferEngine {
       useTransfers.getState().patch(item.id, {
         status: "completed",
         transferred: 0,
+        speedBps: 0,
+        etaSec: null,
+        completedAt: Date.now(),
+        connections: 0,
+      });
+      this.reportActivity(item, "done", true);
+      this.persist();
+      return;
+    }
+
+    if (
+      typeof window !== "undefined" &&
+      typeof (window as unknown as {
+        LocalDockAndroid?: {
+          downloadDirect?: (u: string, n: string, s: number, d: string, o: string) => void;
+        };
+      }).LocalDockAndroid?.downloadDirect === "function"
+    ) {
+      const fullUrl = new URL(downloadUrlOf(item), window.location.origin).href;
+      (window as unknown as {
+        LocalDockAndroid: {
+          downloadDirect: (u: string, n: string, s: number, d: string, o: string) => void;
+        };
+      }).LocalDockAndroid.downloadDirect(
+        fullUrl,
+        item.name,
+        item.size,
+        getDeviceToken() ?? "",
+        getOwnerKey() ?? ""
+      );
+      useTransfers.getState().patch(item.id, {
+        status: "completed",
+        transferred: item.size,
         speedBps: 0,
         etaSec: null,
         completedAt: Date.now(),

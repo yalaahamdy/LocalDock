@@ -21,8 +21,32 @@ import {
 const OWNER_HEADER = "x-localdock-owner";
 const DEVICE_HEADER = "x-localdock-device";
 
+function parseCookies(header: string | null): Record<string, string> {
+  if (!header) return {};
+  const res: Record<string, string> = {};
+  for (const pair of header.split(";")) {
+    const idx = pair.indexOf("=");
+    if (idx > -1) {
+      res[pair.slice(0, idx).trim()] = decodeURIComponent(pair.slice(idx + 1).trim());
+    }
+  }
+  return res;
+}
+
 export function getAuth(req: Request): AuthContext {
-  const ownerKey = req.headers.get(OWNER_HEADER);
+  const cookies = parseCookies(req.headers.get("cookie"));
+  let urlParams: URLSearchParams | null = null;
+  try {
+    urlParams = new URL(req.url).searchParams;
+  } catch {
+    /* relative or malformed URL fallback */
+  }
+
+  const ownerKey =
+    req.headers.get(OWNER_HEADER) ||
+    cookies["localdock_owner"] ||
+    urlParams?.get("ownerKey");
+
   if (ownerKey) {
     const settings = getSettings();
     if (ownerKey === settings.ownerKey) {
@@ -33,7 +57,12 @@ export function getAuth(req: Request): AuthContext {
     }
     // wrong owner key falls through to device check
   }
-  const deviceToken = req.headers.get(DEVICE_HEADER);
+
+  const deviceToken =
+    req.headers.get(DEVICE_HEADER) ||
+    cookies["localdock_device"] ||
+    urlParams?.get("deviceToken");
+
   if (deviceToken) {
     const device = findDeviceByToken(deviceToken);
     if (device) {

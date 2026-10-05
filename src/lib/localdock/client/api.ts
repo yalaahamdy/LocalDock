@@ -65,6 +65,13 @@ export function apiErrorMessage(e: unknown): string {
 let ownerKey: string | null = null;
 export function setOwnerKey(key: string | null) {
   ownerKey = key;
+  if (typeof document !== "undefined") {
+    if (key) {
+      document.cookie = `localdock_owner=${encodeURIComponent(key)}; path=/; max-age=31536000; SameSite=Lax`;
+    } else {
+      document.cookie = `localdock_owner=; path=/; max-age=0; SameSite=Lax`;
+    }
+  }
 }
 export function getOwnerKey() {
   return ownerKey;
@@ -75,17 +82,26 @@ const DEVICE_TOKEN_KEY = "localdock.deviceToken";
 export function loadDeviceToken() {
   if (typeof window === "undefined") return null;
   deviceToken = window.localStorage.getItem(DEVICE_TOKEN_KEY);
+  if (deviceToken && typeof document !== "undefined") {
+    document.cookie = `localdock_device=${encodeURIComponent(deviceToken)}; path=/; max-age=31536000; SameSite=Lax`;
+  }
   return deviceToken;
 }
 export function saveDeviceToken(token: string) {
   if (typeof window === "undefined") return;
   deviceToken = token;
   window.localStorage.setItem(DEVICE_TOKEN_KEY, token);
+  if (typeof document !== "undefined") {
+    document.cookie = `localdock_device=${encodeURIComponent(token)}; path=/; max-age=31536000; SameSite=Lax`;
+  }
 }
 export function clearDeviceToken() {
   if (typeof window === "undefined") return;
   deviceToken = null;
   window.localStorage.removeItem(DEVICE_TOKEN_KEY);
+  if (typeof document !== "undefined") {
+    document.cookie = `localdock_device=; path=/; max-age=0; SameSite=Lax`;
+  }
 }
 export function getDeviceToken() {
   return deviceToken;
