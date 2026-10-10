@@ -9,7 +9,8 @@ export const dynamic = "force-dynamic";
 export async function GET(req: Request) {
   const check = await requireAuth(req);
   if ("deny" in check) return check.deny;
-  return jsonOk({ settings: getSettings() });
+  const s = getSettings();
+  return jsonOk({ settings: check.auth.kind === "owner" ? s : { ...s, ownerKey: "" } });
 }
 
 interface PatchBody {

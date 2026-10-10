@@ -67,7 +67,7 @@ export function setOwnerKey(key: string | null) {
   ownerKey = key;
   if (typeof document !== "undefined") {
     if (key) {
-      document.cookie = `localdock_owner=${encodeURIComponent(key)}; path=/; max-age=31536000; SameSite=Lax`;
+      document.cookie = `localdock_owner=${encodeURIComponent(key)}; path=/; SameSite=Lax`;
     } else {
       document.cookie = `localdock_owner=; path=/; max-age=0; SameSite=Lax`;
     }
@@ -250,7 +250,12 @@ export const Api = {
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(input),
     }),
-  updateShare: (id: string, patch: Partial<Pick<Share, "name" | "access" | "guestEnabled" | "allowedDevices">>) =>
+  updateShare: (
+    id: string,
+    patch: Partial<Pick<Share, "name" | "access" | "guestEnabled" | "allowedDevices" | "guestExpiresAt">> & {
+      rotateSlug?: boolean;
+    }
+  ) =>
     api<{ share: Share }>(`/api/shares/${id}`, {
       method: "PATCH",
       headers: { "Content-Type": "application/json" },
@@ -258,6 +263,14 @@ export const Api = {
     }),
   deleteShare: (id: string) =>
     api<{ ok: boolean }>(`/api/shares/${id}`, { method: "DELETE" }),
+  updateDevice: (id: string, name: string) =>
+    api<{ device: Device }>(`/api/devices/${id}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ name }),
+    }),
+  clearActivity: () =>
+    api<{ ok: boolean }>("/api/activity", { method: "DELETE" }),
 
   browse: (shareId: string, path: string) =>
     api<{ path: string; entries: FileEntry[] }>(

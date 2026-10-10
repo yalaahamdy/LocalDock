@@ -24,10 +24,10 @@
     --bg: #f2f6f5;
     --panel: rgba(255, 255, 255, 0.75);
     --panel-strong: rgba(255, 255, 255, 0.95);
-    --border: rgba(15, 42, 38, 0.12);
-    --text: #10231f;
-    --muted: #5d6f6b;
-    --accent-soft: rgba(15, 118, 110, 0.1);
+    --border: rgba(15, 42, 38, 0.15);
+    --text: #0e201c;
+    --muted: #3d524d;
+    --accent-soft: rgba(15, 118, 110, 0.12);
     --shadow: 0 14px 40px rgba(16, 35, 31, 0.12);
     color-scheme: light;
   }
@@ -598,6 +598,35 @@ body {
   font-weight: 300;
   margin: 0 2px;
   user-select: none;
+}
+
+@media (max-width: 360px) {
+  .code-boxes {
+    gap: 4px;
+    margin: 12px 0 4px;
+  }
+  .code-box {
+    width: 38px;
+    height: 48px;
+    border-radius: 10px;
+    font-size: 1.25rem;
+  }
+  .code-sep {
+    font-size: 1.1rem;
+    margin: 0;
+  }
+}
+
+@media (max-width: 320px) {
+  .code-boxes {
+    gap: 2.5px;
+  }
+  .code-box {
+    width: 33px;
+    height: 44px;
+    border-radius: 8px;
+    font-size: 1.05rem;
+  }
 }
 
 @keyframes shake {

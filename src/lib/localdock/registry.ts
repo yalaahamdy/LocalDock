@@ -25,7 +25,7 @@ import type {
   Website,
 } from "./types";
 
-export const VERSION = "1.0.0";
+export const VERSION = "1.1.0";
 export const STARTED_AT = Date.now();
 
 /* ------------------------------------------------------------------ */
@@ -44,7 +44,7 @@ export function getSettings(): LocalDockSettings {
     createdAt: existing?.createdAt ?? Date.now(),
     onboarded: existing?.onboarded ?? false,
     startWithWindows: existing?.startWithWindows ?? false,
-    allowRemoteOwner: existing?.allowRemoteOwner ?? true,
+    allowRemoteOwner: existing?.allowRemoteOwner ?? false,
     theme: existing?.theme ?? "system",
   };
   writeJson(FILES.settings, settings);
@@ -118,7 +118,9 @@ export async function createShare(input: {
 
 export async function updateShare(
   id: string,
-  patch: Partial<Pick<Share, "name" | "access" | "guestEnabled" | "allowedDevices">>
+  patch: Partial<Pick<Share, "name" | "access" | "guestEnabled" | "allowedDevices" | "guestExpiresAt">> & {
+    rotateSlug?: boolean;
+  }
 ): Promise<Share | undefined> {
   return withLock("shares", async () => {
     const shares = listShares();
@@ -128,6 +130,9 @@ export async function updateShare(
     if (patch.name) {
       next.name = patch.name.trim().slice(0, 60) || shares[idx].name;
       // keep slug stable on rename (links must not break)
+    }
+    if (patch.rotateSlug) {
+      next.slug = crypto.randomBytes(6).toString("hex");
     }
     shares[idx] = next;
     await persistShares(shares);
@@ -212,12 +217,31 @@ export async function addDevice(input: {
 }
 
 export async function touchDevice(id: string): Promise<void> {
+  const current = listDevices().find((d) => d.id === id);
+  if (current && Date.now() - current.lastSeenAt < 20_000) return;
   return withLock("devices", async () => {
     const devices = listDevices();
     const idx = devices.findIndex((d) => d.id === id);
     if (idx === -1) return;
+    if (Date.now() - devices[idx].lastSeenAt < 20_000) return;
     devices[idx] = { ...devices[idx], lastSeenAt: Date.now() };
     await writeJson(FILES.devices, devices);
+  });
+}
+
+export async function updateDevice(
+  id: string,
+  patch: { name?: string }
+): Promise<Device | undefined> {
+  return withLock("devices", async () => {
+    const devices = listDevices();
+    const idx = devices.findIndex((d) => d.id === id);
+    if (idx === -1) return undefined;
+    if (patch.name) {
+      devices[idx] = { ...devices[idx], name: patch.name.trim().slice(0, 60) || devices[idx].name };
+      await writeJson(FILES.devices, devices);
+    }
+    return devices[idx];
   });
 }
 
@@ -370,20 +394,28 @@ export async function logActivity(
   loc?: { key: string; params?: Record<string, string | number> }
 ): Promise<void> {
   try {
-    const entries = readJson<ActivityEntry[]>(FILES.activity, []);
-    entries.unshift({
-      id: crypto.randomUUID(),
-      type,
-      message,
-      at: Date.now(),
-      meta: meta ?? undefined,
-      loc,
+    await withLock("activity", async () => {
+      const entries = readJson<ActivityEntry[]>(FILES.activity, []);
+      entries.unshift({
+        id: crypto.randomUUID(),
+        type,
+        message,
+        at: Date.now(),
+        meta: meta ?? undefined,
+        loc,
+      });
+      if (entries.length > ACTIVITY_MAX) entries.length = ACTIVITY_MAX;
+      await writeJson(FILES.activity, entries);
     });
-    if (entries.length > ACTIVITY_MAX) entries.length = ACTIVITY_MAX;
-    await writeJson(FILES.activity, entries);
   } catch {
     // activity logging must never break a user operation
   }
+}
+
+export async function clearActivity(): Promise<void> {
+  await withLock("activity", async () => {
+    await writeJson(FILES.activity, []);
+  });
 }
 
 export function listActivity(limit = 60): ActivityEntry[] {
@@ -469,23 +501,71 @@ export function networkInterfaces(): { name: string; address: string }[] {
 
 /**
  * Pick the LAN IPv4 most likely to be reachable by phones on the Wi-Fi.
- * Scoring prefers typical home/office ranges and demotes virtual adapters
- * (Docker / WSL / Hyper-V usually hand out 172.x addresses), so QR codes and
- * share links don't end up pointing at a container bridge.
+ * Scoring prioritizes real hardware interfaces (Wi-Fi, Ethernet, WLAN) and
+ * heavily penalizes virtual / container adapters (VirtualBox, VMware, WSL,
+ * Hyper-V, Docker, TAP, Tailscale), so QR codes and LAN links always point to
+ * the real host interface accessible by phones.
  */
 export function pickPrimaryLanIp(): string | null {
   const nics = networkInterfaces();
   if (nics.length === 0) return null;
-  const score = (ip: string): number => {
-    if (/^192\.168\./.test(ip)) return 4; // home/office Wi-Fi — most likely target
-    if (/^10\./.test(ip)) return 3; // corporate / hotspot ranges
-    if (/^172\.(1[6-9]|2\d|3[01])\./.test(ip)) return 1; // often virtual (Docker/WSL)
-    return 2; // other private/unusual — usable fallback
+
+  const score = (nic: { name: string; address: string }): number => {
+    const name = nic.name.toLowerCase();
+    const ip = nic.address;
+
+    // Check for virtual/dummy adapters
+    const isVirtual =
+      name.includes("virtual") ||
+      name.includes("vbox") ||
+      name.includes("vmware") ||
+      name.includes("wsl") ||
+      name.includes("docker") ||
+      name.includes("vethernet") ||
+      name.includes("hyper-v") ||
+      name.includes("tap") ||
+      name.includes("tun") ||
+      name.includes("pseudo") ||
+      name.includes("npcap") ||
+      name.includes("tailscale") ||
+      name.includes("zerotier");
+
+    if (isVirtual) return -50;
+
+    let pts = 0;
+
+    // Favor real physical adapters
+    if (name.includes("wi-fi") || name.includes("wifi") || name.includes("wireless") || name.includes("wlan")) {
+      pts += 100;
+    } else if (name.includes("ethernet") || name.includes("eth") || name.includes("lan")) {
+      pts += 80;
+    }
+
+    // Typical VirtualBox host-only subnet
+    if (ip.startsWith("192.168.56.")) {
+      return -30;
+    }
+
+    // IP subnet scoring
+    if (/^192\.168\./.test(ip)) pts += 40; // home/office Wi-Fi
+    else if (/^10\./.test(ip)) pts += 30; // corporate / hotspot ranges
+    else if (/^172\.(1[6-9]|2\d|3[01])\./.test(ip)) pts += 10;
+    else pts += 5;
+
+    return pts;
   };
+
   let best = nics[0];
-  for (const nic of nics) {
-    if (score(nic.address) > score(best.address)) best = nic;
+  let bestScore = score(best);
+
+  for (let i = 1; i < nics.length; i++) {
+    const s = score(nics[i]);
+    if (s > bestScore) {
+      best = nics[i];
+      bestScore = s;
+    }
   }
+
   return best.address;
 }
 

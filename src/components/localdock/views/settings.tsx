@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { useTheme } from "next-themes";
-import { useSystem, useDevices, useActivity, useRefresh } from "../data-hooks";
+import { useSystem, useDevices, useShares, useActivity, useRefresh } from "../data-hooks";
 import { useNav } from "../nav";
 import { Api, apiErrorMessage } from "@/lib/localdock/client/api";
 import { formatBytes, formatSpeed } from "@/lib/localdock/client/format";
@@ -33,6 +33,7 @@ import {
   Eye,
   Wifi,
   Info,
+  Trash2,
 } from "lucide-react";
 import { toast } from "sonner";
 import type { LocalDockSettings } from "@/lib/localdock/types";
@@ -42,6 +43,7 @@ export function SettingsView() {
   const { pack, setPack } = useThemePack();
   const system = useSystem();
   const devices = useDevices();
+  const shares = useShares();
   const activity = useActivity(60);
   const refresh = useRefresh();
   const { theme, setTheme } = useTheme();
@@ -49,6 +51,9 @@ export function SettingsView() {
   const [settings, setSettings] = useState<LocalDockSettings | null>(null);
   const [name, setName] = useState("");
   const [saving, setSaving] = useState(false);
+  const [clearingLog, setClearingLog] = useState(false);
+
+  const guestSharesCount = shares.data?.filter((s) => s.guestEnabled).length ?? 0;
 
   useEffect(() => {
     void (async () => {
@@ -281,9 +286,7 @@ export function SettingsView() {
           </div>
           <div className="mt-4 grid grid-cols-2 gap-3 sm:grid-cols-3">
             <MiniStat label={t.settings.trustedDevices} value={`${devices.data?.length ?? 0}`} />
-            <MiniStat label={t.settings.guestShares} value={
-              `${(system.data ? 0 : 0)}` === "0" ? "—" : "—"
-            } />
+            <MiniStat label={t.settings.guestShares} value={`${guestSharesCount}`} />
             <MiniStat label={t.settings.server} value={system.data?.online ? t.status.online : t.status.offline} ok={system.data?.online} />
           </div>
           <Button variant="outline" className="mt-4 rounded-xl" onClick={() => go("devices")}>
@@ -344,6 +347,7 @@ export function SettingsView() {
               <StatusRow label={t.settings.transfers} value={formatSpeed(system.data.transferSpeedBps)} />
               <StatusRow label={t.settings.trustedDevices} value={t.settings.devicesOnlineTrusted(system.data.devicesOnline, system.data.devicesTrusted)} />
               <StatusRow label={t.settings.platform} value={system.data.platform} />
+              <StatusRow label="الإصدار" value={(system.data as { version?: string })?.version ?? "1.0.0"} />
             </div>
           )}
         </SectionCard>
@@ -425,6 +429,31 @@ export function SettingsView() {
               </p>
             )}
           </div>
+          {(activity.data ?? []).length > 0 && (
+            <div className="mt-3 flex justify-end">
+              <Button
+                variant="outline"
+                size="sm"
+                className="h-8 rounded-xl text-xs text-destructive hover:bg-destructive/10"
+                disabled={clearingLog}
+                onClick={async () => {
+                  setClearingLog(true);
+                  try {
+                    await Api.clearActivity();
+                    toast.success("تم تفريغ سجل الأنشطة بنجاح");
+                    refresh.refreshActivity();
+                  } catch (e) {
+                    toast.error((e as Error).message);
+                  } finally {
+                    setClearingLog(false);
+                  }
+                }}
+              >
+                {clearingLog ? <Loader2 className="size-3.5 animate-spin" /> : <Trash2 className="size-3.5" />}
+                مسح السجل
+              </Button>
+            </div>
+          )}
         </SectionCard>
 
         <SectionCard
@@ -438,6 +467,21 @@ export function SettingsView() {
             <p><span className="font-semibold text-foreground">{t.settings.storageWebsites}</span> localdock/Websites/*</p>
             <p><span className="font-semibold text-foreground">{t.settings.storageRegistry}</span> localdock/data/*.json</p>
           </div>
+
+          {(system.data as { shareStorage?: { shares: { id: string; name: string; bytes: number }[] } })?.shareStorage?.shares &&
+           (system.data as { shareStorage?: { shares: { id: string; name: string; bytes: number }[] } }).shareStorage!.shares.length > 0 && (
+            <div className="mt-3 space-y-2 border-t border-border/70 pt-3">
+              <p className="text-xs font-semibold">توزيع استهلاك المشاركات للمساحة:</p>
+              <div className="space-y-1.5">
+                {(system.data as { shareStorage?: { shares: { id: string; name: string; bytes: number }[] } }).shareStorage!.shares.map((sh) => (
+                  <div key={sh.id} className="flex items-center justify-between text-xs">
+                    <span className="max-w-[200px] truncate text-muted-foreground">{sh.name}</span>
+                    <span className="font-mono text-[11px] font-semibold">{formatBytes(sh.bytes)}</span>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
         </SectionCard>
       </TabsContent>
     </Tabs>

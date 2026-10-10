@@ -1068,13 +1068,34 @@ function wire() {
   $("#step2QrScan")?.addEventListener("click", () => openQrScanner());
   $("#closeQr")?.addEventListener("click", () => closeQrScanner());
   $("#qrBackdrop")?.addEventListener("click", () => closeQrScanner());
+  $("#qrTorchBtn")?.addEventListener("click", () => toggleTorch());
   $("#qrFileInput")?.addEventListener("change", handleQrFileInput);
+
+  /* Android back button handler */
+  window.addEventListener("popstate", () => {
+    const modal = $("#qrModal");
+    if (modal && !modal.classList.contains("hidden")) {
+      closeQrScanner(true);
+      return;
+    }
+    const pairView = $("#view-pair");
+    if (pairView && pairView.classList.contains("active")) {
+      const step2 = $("#step2");
+      if (step2 && !step2.classList.contains("hidden")) {
+        goStep(1);
+        return;
+      }
+      showView("view-discover");
+      return;
+    }
+  });
 }
 
 /* ─────────────────────────── QR Scanner ────────────────────────────── */
 
 let qrStream = null;
 let qrScanActive = false;
+let torchEnabled = false;
 
 async function openQrScanner() {
   const modal = $("#qrModal");
@@ -1085,6 +1106,7 @@ async function openQrScanner() {
   feedback.classList.add("hidden");
 
   try {
+    try { window.history.pushState({ modal: "qr" }, ""); } catch {}
     qrStream = await navigator.mediaDevices.getUserMedia({
       video: { facingMode: "environment", width: { ideal: 1280 }, height: { ideal: 720 } },
     });
@@ -1099,8 +1121,33 @@ async function openQrScanner() {
   }
 }
 
-function closeQrScanner() {
+async function toggleTorch() {
+  if (!qrStream) return;
+  const track = qrStream.getVideoTracks()[0];
+  if (!track) return;
+  try {
+    const caps = track.getCapabilities ? track.getCapabilities() : {};
+    if (!caps.torch) {
+      toast("مصباح الفلاش غير مدعوم على هذه الكاميرا");
+      return;
+    }
+    torchEnabled = !torchEnabled;
+    await track.applyConstraints({
+      advanced: [{ torch: torchEnabled }],
+    });
+    const btn = $("#qrTorchBtn");
+    if (btn) btn.classList.toggle("active", torchEnabled);
+  } catch {
+    /* torch error */
+  }
+}
+
+function closeQrScanner(fromPopstate = false) {
   qrScanActive = false;
+  torchEnabled = false;
+  const torchBtn = $("#qrTorchBtn");
+  if (torchBtn) torchBtn.classList.remove("active");
+
   if (qrStream) {
     qrStream.getTracks().forEach((tr) => tr.stop());
     qrStream = null;
@@ -1108,6 +1155,14 @@ function closeQrScanner() {
   const video = $("#qrVideo");
   if (video) video.srcObject = null;
   $("#qrModal").classList.add("hidden");
+
+  if (!fromPopstate) {
+    try {
+      if (window.history.state && window.history.state.modal === "qr") {
+        window.history.back();
+      }
+    } catch {}
+  }
 }
 
 function scanQrTick() {

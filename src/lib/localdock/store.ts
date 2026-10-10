@@ -38,17 +38,36 @@ export function ensureHomeLayout(): void {
   }
 }
 
-/** Atomic write: write tmp file then rename (same dir => same filesystem). */
+const cache = new Map<string, { mtime: number; data: unknown }>();
+
+export function invalidateJsonCache(file?: string): void {
+  if (file) cache.delete(file);
+  else cache.clear();
+}
+
+/** Atomic write: write tmp file, fsync, then rename (same dir => same filesystem). */
 export async function writeJson(file: string, data: unknown): Promise<void> {
   const tmp = `${file}.${process.pid}.${Date.now()}.tmp`;
-  await fsp.writeFile(tmp, JSON.stringify(data, null, 2), "utf8");
+  const fh = await fsp.open(tmp, "w");
+  try {
+    await fh.writeFile(JSON.stringify(data, null, 2), "utf8");
+    await fh.sync();
+  } finally {
+    await fh.close();
+  }
   await fsp.rename(tmp, file);
+  invalidateJsonCache(file);
 }
 
 export function readJson<T>(file: string, fallback: T): T {
   try {
+    const st = fs.statSync(file);
+    const hit = cache.get(file);
+    if (hit && hit.mtime === st.mtimeMs) return hit.data as T;
     const raw = fs.readFileSync(file, "utf8");
-    return JSON.parse(raw) as T;
+    const data = JSON.parse(raw) as T;
+    cache.set(file, { mtime: st.mtimeMs, data });
+    return data;
   } catch {
     return fallback;
   }

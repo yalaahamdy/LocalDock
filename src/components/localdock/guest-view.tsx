@@ -147,6 +147,8 @@ export function PairClaimView({
   onDone: () => void;
   onExit: () => void;
 }) {
+  const [tab, setTab] = useState<"pair" | "owner">("pair");
+  const [ownerKeyInput, setOwnerKeyInput] = useState("");
   const [state, setState] = useState<
     { kind: "loading" } | { kind: "invalid"; message: string } | {
       kind: "found";
@@ -169,8 +171,6 @@ export function PairClaimView({
     // The QR links to /?pair=CODE on the *server*; the code itself is enough.
     setState({ kind: "loading" });
     try {
-      // claim immediately is destructive (single-use); so first "peek" via a dry claim is not possible.
-      // Instead show the pairing screen directly with the code prefilled.
       setState({
         kind: "found",
         serverName: t.pairClaim.yourComputer,
@@ -213,6 +213,25 @@ export function PairClaimView({
     }
   };
 
+  const loginAsOwner = async () => {
+    const k = ownerKeyInput.trim();
+    if (!k) return;
+    setPairing(true);
+    try {
+      const { setOwnerKey } = await import("@/lib/localdock/client/api");
+      setOwnerKey(k);
+      const res = await Api.system();
+      setState({ kind: "paired", serverName: res.serverName });
+      setTimeout(onDone, 1000);
+    } catch {
+      const { setOwnerKey } = await import("@/lib/localdock/client/api");
+      setOwnerKey(null);
+      setState({ kind: "invalid", message: "مفتاح المالك غير صحيح أو غير مسموح به عبر الشبكة." });
+    } finally {
+      setPairing(false);
+    }
+  };
+
   return (
     <div className="flex min-h-screen items-center justify-center px-4">
       <div className="w-full max-w-sm rounded-3xl border border-border/70 bg-card p-7 text-center shadow-pop rise">
@@ -228,48 +247,101 @@ export function PairClaimView({
         {state.kind === "found" && (
           <>
             <h1 className="mt-5 text-xl font-bold tracking-tight">{t.pairClaim.title}</h1>
-            {code ? (
-              <div className="mt-4 rounded-2xl border border-border bg-muted/40 p-4">
-                <p className="flex items-center justify-center gap-2 text-sm font-semibold">
-                  <Wifi className="size-4 text-success" />
-                  {state.serverName}
-                </p>
-                <code className="mt-1.5 block font-mono text-2xl font-bold tracking-[0.3em]">
-                  {code}
-                </code>
-              </div>
-            ) : (
-              <div className="mt-4 rounded-2xl border border-border bg-muted/40 p-4 text-start">
-                <label className="block text-xs font-semibold text-muted-foreground mb-1.5">
-                  {t.pairClaim.title}
+            
+            <div className="mt-3 flex rounded-xl border border-border bg-muted/50 p-1 text-xs font-semibold">
+              <button
+                type="button"
+                onClick={() => setTab("pair")}
+                className={cn(
+                  "flex-1 rounded-lg py-1.5 transition-all",
+                  tab === "pair" ? "bg-background text-foreground shadow-xs" : "text-muted-foreground hover:text-foreground"
+                )}
+              >
+                رمز الاقتران
+              </button>
+              <button
+                type="button"
+                onClick={() => setTab("owner")}
+                className={cn(
+                  "flex-1 rounded-lg py-1.5 transition-all",
+                  tab === "owner" ? "bg-background text-foreground shadow-xs" : "text-muted-foreground hover:text-foreground"
+                )}
+              >
+                مفتاح المالك
+              </button>
+            </div>
+
+            {tab === "pair" ? (
+              <>
+                {code ? (
+                  <div className="mt-4 rounded-2xl border border-border bg-muted/40 p-4">
+                    <p className="flex items-center justify-center gap-2 text-sm font-semibold">
+                      <Wifi className="size-4 text-success" />
+                      {state.serverName}
+                    </p>
+                    <code className="mt-1.5 block font-mono text-2xl font-bold tracking-[0.3em]">
+                      {code}
+                    </code>
+                  </div>
+                ) : (
+                  <div className="mt-4 rounded-2xl border border-border bg-muted/40 p-4 text-start">
+                    <label className="block text-xs font-semibold text-muted-foreground mb-1.5">
+                      {t.pairClaim.title}
+                    </label>
+                    <input
+                      value={inputCode}
+                      onChange={(e) => setInputCode(e.target.value.toUpperCase().slice(0, 6))}
+                      placeholder="XXXXXX"
+                      className="h-11 w-full rounded-xl border border-border bg-background px-3.5 font-mono text-center text-xl font-bold tracking-[0.25em] uppercase outline-none focus:ring-2 focus:ring-ring"
+                    />
+                  </div>
+                )}
+                <label className="mt-4 block text-start">
+                  <span className="mb-1.5 block text-xs font-semibold text-muted-foreground">
+                    {t.pairClaim.deviceName}
+                  </span>
+                  <input
+                    value={deviceName}
+                    onChange={(e) => setDeviceName(e.target.value)}
+                    className="h-11 w-full rounded-xl border border-border bg-background px-3.5 text-sm outline-none focus:ring-2 focus:ring-ring"
+                  />
                 </label>
-                <input
-                  value={inputCode}
-                  onChange={(e) => setInputCode(e.target.value.toUpperCase().slice(0, 6))}
-                  placeholder="XXXXXX"
-                  className="h-11 w-full rounded-xl border border-border bg-background px-3.5 font-mono text-center text-xl font-bold tracking-[0.25em] uppercase outline-none focus:ring-2 focus:ring-ring"
-                />
+                <Button
+                  size="lg"
+                  className="mt-5 w-full rounded-2xl"
+                  onClick={pair}
+                  disabled={pairing || !deviceName.trim() || !(code || inputCode).trim()}
+                >
+                  {pairing ? <Loader2 className="size-4 animate-spin" /> : <Check className="size-4" />}
+                  {t.pairClaim.trust}
+                </Button>
+              </>
+            ) : (
+              <div className="mt-4 space-y-4 text-start">
+                <div>
+                  <label className="block text-xs font-semibold text-muted-foreground mb-1.5">
+                    أدخل مفتاح المالك (Owner Key)
+                  </label>
+                  <input
+                    type="password"
+                    value={ownerKeyInput}
+                    onChange={(e) => setOwnerKeyInput(e.target.value)}
+                    placeholder="مفتاح المالك السري..."
+                    className="h-11 w-full rounded-xl border border-border bg-background px-3.5 text-xs font-mono outline-none focus:ring-2 focus:ring-ring"
+                  />
+                </div>
+                <Button
+                  size="lg"
+                  className="w-full rounded-2xl"
+                  onClick={loginAsOwner}
+                  disabled={pairing || !ownerKeyInput.trim()}
+                >
+                  {pairing ? <Loader2 className="size-4 animate-spin" /> : <Check className="size-4" />}
+                  دخول كمالك للسحابة
+                </Button>
               </div>
             )}
-            <label className="mt-4 block text-start">
-              <span className="mb-1.5 block text-xs font-semibold text-muted-foreground">
-                {t.pairClaim.deviceName}
-              </span>
-              <input
-                value={deviceName}
-                onChange={(e) => setDeviceName(e.target.value)}
-                className="h-11 w-full rounded-xl border border-border bg-background px-3.5 text-sm outline-none focus:ring-2 focus:ring-ring"
-              />
-            </label>
-            <Button
-              size="lg"
-              className="mt-5 w-full rounded-2xl"
-              onClick={pair}
-              disabled={pairing || !deviceName.trim() || !(code || inputCode).trim()}
-            >
-              {pairing ? <Loader2 className="size-4 animate-spin" /> : <Check className="size-4" />}
-              {t.pairClaim.trust}
-            </Button>
+
             <button
               onClick={onExit}
               className="mt-3 text-xs text-muted-foreground hover:text-foreground"

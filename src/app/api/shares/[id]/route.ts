@@ -23,7 +23,9 @@ interface PatchBody {
   name?: string;
   access?: "read" | "readwrite";
   guestEnabled?: boolean;
+  guestExpiresAt?: number | null;
   allowedDevices?: "all" | string[];
+  rotateSlug?: boolean;
 }
 
 export async function PATCH(req: Request, ctx: Ctx) {

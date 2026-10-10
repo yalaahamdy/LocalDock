@@ -9,7 +9,7 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
-import { Check, Copy, Timer } from "lucide-react";
+import { Check, Copy, Timer, RefreshCw } from "lucide-react";
 import { toast } from "sonner";
 import { useI18n } from "@/lib/localdock/i18n";
 
@@ -22,6 +22,7 @@ export function QrDialog({
   qrUrl,
   link,
   expiresInSec,
+  onRefresh,
 }: {
   open: boolean;
   onOpenChange: (v: boolean) => void;
@@ -30,6 +31,7 @@ export function QrDialog({
   qrUrl: string;
   link: string;
   expiresInSec?: number | null;
+  onRefresh?: () => void;
 }) {
   const { t } = useI18n();
   const [copied, setCopied] = useState(false);
@@ -68,14 +70,27 @@ export function QrDialog({
               height={208}
             />
           </div>
-          {typeof expiresInSec === "number" && expiresInSec > 0 && (
-            <div className="flex items-center gap-1.5 rounded-full bg-muted px-3 py-1 text-xs font-medium text-muted-foreground">
-              <Timer className="size-3.5" />
-              {Math.ceil(expiresInSec / 60) > 0
-                ? t.qr.expiresMin(Math.ceil(expiresInSec / 60))
-                : t.qr.expiresSec(expiresInSec)}
-            </div>
-          )}
+          <div className="flex items-center gap-2">
+            {typeof expiresInSec === "number" && expiresInSec > 0 && (
+              <div className="flex items-center gap-1.5 rounded-full bg-muted px-3 py-1 text-xs font-medium text-muted-foreground">
+                <Timer className="size-3.5" />
+                {Math.ceil(expiresInSec / 60) > 0
+                  ? t.qr.expiresMin(Math.ceil(expiresInSec / 60))
+                  : t.qr.expiresSec(expiresInSec)}
+              </div>
+            )}
+            {onRefresh && (
+              <Button
+                variant="outline"
+                size="sm"
+                className="h-7 rounded-xl text-xs"
+                onClick={onRefresh}
+              >
+                <RefreshCw className="size-3" />
+                تحديث
+              </Button>
+            )}
+          </div>
           <div className="flex w-full min-w-0 items-center gap-2">
             <code
               dir="ltr"

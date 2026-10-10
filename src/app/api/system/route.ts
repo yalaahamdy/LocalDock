@@ -21,6 +21,7 @@ export async function GET(req: Request) {
   const check = await requireAuth(req);
   if ("deny" in check) return check.deny;
 
+  const isOwner = check.auth.kind === "owner";
   const settings = getSettings();
   const shares = listShares();
   const devices = listDevices();
@@ -40,11 +41,16 @@ export async function GET(req: Request) {
     sharedBytes: shares.reduce((acc, s) => acc + s.sizeBytes, 0),
     transferSpeedBps: currentSpeedBps(),
     activeTransfers: 0, // client-side value merges in the UI
-    platform: `${os.type()} ${os.release()}`,
-    hostname: os.hostname(),
-    network: networkInterfaces(),
+    platform: isOwner ? `${os.type()} ${os.release()}` : "LocalDock",
+    hostname: isOwner ? os.hostname() : "LocalDock Host",
+    network: isOwner ? networkInterfaces() : [],
     /** Best-guess primary LAN IPv4 — kept fresh for share links / QR codes. */
     lanIp: pickPrimaryLanIp(),
     storage,
+    shareStorage: shares.map((s) => ({
+      id: s.id,
+      name: s.name,
+      sizeBytes: s.sizeBytes,
+    })),
   });
 }

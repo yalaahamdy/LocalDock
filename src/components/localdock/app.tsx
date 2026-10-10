@@ -49,19 +49,45 @@ export default function LocalDockApp() {
 
     try {
       const info: BootstrapInfo = await Api.bootstrap();
-      setOwnerKey(info.ownerKey || null);
+      const host = typeof window !== "undefined" ? window.location.hostname : "";
+      const isLoopback = host === "localhost" || host === "127.0.0.1" || host === "::1" || isDesktop();
+      
+      // If server authorized and returned ownerKey (loopback or allowRemoteOwner=true), adopt it!
+      const effectiveOwnerKey = info.ownerKey || null;
+      setOwnerKey(effectiveOwnerKey);
+
       // Server-reported desktop flag AND Tauri presence (belt & suspenders).
       (window as { __LOCALDOCK_DESKTOP__?: boolean }).__LOCALDOCK_DESKTOP__ =
         !!(info.desktop && isDesktop());
+
       // Inject the real LAN IP so QR codes / share links use the reachable address.
       if (info.lanIp) {
         setLanIp(info.lanIp);
       }
-      if (!info.ownerKey && !loadDeviceToken()) {
-        setPairCode("");
-        setMode("pair-claim");
-        return;
+
+      // If not owner, verify device pairing token
+      if (!effectiveOwnerKey) {
+        const token = loadDeviceToken();
+        if (!token) {
+          setPairCode("");
+          setMode("pair-claim");
+          return;
+        }
+
+        // Verify token against server - if invalid or revoked (401), clear and show pairing
+        try {
+          await Api.system();
+        } catch (err: unknown) {
+          const apiErr = err as { status?: number; code?: string };
+          if (apiErr?.status === 401 || apiErr?.code === "unauthorized") {
+            clearDeviceToken();
+            setPairCode("");
+            setMode("pair-claim");
+            return;
+          }
+        }
       }
+
       if (!info.onboarded) {
         setMode("onboarding");
       } else {

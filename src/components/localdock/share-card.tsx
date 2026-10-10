@@ -44,6 +44,9 @@ import {
   Trash2,
   Eye,
   Pencil,
+  Share2,
+  RefreshCw,
+  Clock,
 } from "lucide-react";
 import { toast } from "sonner";
 import { useI18n } from "@/lib/localdock/i18n";
@@ -71,6 +74,22 @@ export function ShareCard({ share, className }: { share: Share; className?: stri
     }
   };
 
+  const shareNative = async () => {
+    if (typeof navigator !== "undefined" && navigator.share) {
+      try {
+        await navigator.share({
+          title: share.name,
+          text: `LocalDock: ${share.name}`,
+          url: link,
+        });
+        return;
+      } catch {
+        /* canceled by user */
+      }
+    }
+    await copy();
+  };
+
   return (
     <>
       <div
@@ -91,7 +110,7 @@ export function ShareCard({ share, className }: { share: Share; className?: stri
           </div>
           <button
             onClick={() => setManageOpen(true)}
-            className="rounded-lg p-1.5 text-muted-foreground opacity-0 transition-all hover:bg-muted hover:text-foreground group-hover:opacity-100"
+            className="rounded-lg p-1.5 text-muted-foreground opacity-80 transition-all hover:bg-muted hover:text-foreground md:opacity-0 md:group-hover:opacity-100 focus:opacity-100"
             aria-label={t.shareCard.manageAria(share.name)}
           >
             <Settings2 className="size-4" />
@@ -103,6 +122,12 @@ export function ShareCard({ share, className }: { share: Share; className?: stri
           <Badge ok={share.guestEnabled}>
             {share.guestEnabled ? t.shareCard.guestOn : t.shareCard.devicesOnly}
           </Badge>
+          {share.guestExpiresAt && (
+            <span className="flex items-center gap-1 rounded-full bg-amber-500/10 px-2 py-0.5 text-[10px] font-medium text-amber-600 dark:text-amber-400">
+              <Clock className="size-3" />
+              مؤقت
+            </span>
+          )}
         </div>
 
         <code dir="ltr" className="mt-3 block truncate rounded-lg bg-muted/50 px-2.5 py-1.5 text-[11px] text-muted-foreground">
@@ -114,8 +139,14 @@ export function ShareCard({ share, className }: { share: Share; className?: stri
             <FolderOpen className="size-4" />
             {t.shareCard.open}
           </Button>
-          <Button size="sm" variant="outline" className="h-8 rounded-xl" onClick={copy}>
-            {copied ? <Check className="size-4 text-success" /> : <Copy className="size-4" />}
+          <Button
+            size="sm"
+            variant="outline"
+            className="h-8 rounded-xl"
+            onClick={() => void shareNative()}
+            title="مشاركة أو نسخ الرابط"
+          >
+            {copied ? <Check className="size-4 text-success" /> : <Share2 className="size-4" />}
           </Button>
           <Button
             size="sm"
@@ -171,6 +202,8 @@ function ShareManageDialog({
   const [name, setName] = useState(share.name);
   const [access, setAccess] = useState<"read" | "readwrite">(share.access);
   const [guest, setGuest] = useState(share.guestEnabled);
+  const [rotateSlug, setRotateSlug] = useState(false);
+  const [guestExpiryOption, setGuestExpiryOption] = useState<"keep" | "none" | "1h" | "24h" | "7d">("keep");
   const [deviceMode, setDeviceMode] = useState<"all" | "custom">(
     share.allowedDevices === "all" ? "all" : "custom"
   );
@@ -193,11 +226,26 @@ function ShareManageDialog({
   const save = async () => {
     setSaving(true);
     try {
+      let guestExpiresAt: number | null | undefined = undefined;
+      if (!guest) {
+        guestExpiresAt = null;
+      } else if (guestExpiryOption === "none") {
+        guestExpiresAt = null;
+      } else if (guestExpiryOption === "1h") {
+        guestExpiresAt = Date.now() + 3600_000;
+      } else if (guestExpiryOption === "24h") {
+        guestExpiresAt = Date.now() + 86400_000;
+      } else if (guestExpiryOption === "7d") {
+        guestExpiresAt = Date.now() + 7 * 86400_000;
+      }
+
       await Api.updateShare(share.id, {
         name: name.trim() || share.name,
         access,
         guestEnabled: guest,
         allowedDevices: deviceMode === "all" ? "all" : selected,
+        guestExpiresAt,
+        rotateSlug,
       });
       toast.success(t.shareCard.updatedToast);
       refresh.refreshShares();
@@ -275,13 +323,59 @@ function ShareManageDialog({
               </RadioGroup>
             </div>
 
-            <label className="flex items-center justify-between rounded-2xl border border-border p-3">
-              <div className="ps-3">
-                <p className="text-sm font-semibold">{t.shareCard.guestTitle}</p>
-                <p className="text-xs text-muted-foreground">{t.shareCard.guestDesc}</p>
+            <div className="space-y-3 rounded-2xl border border-border p-3">
+              <div className="flex items-center justify-between">
+                <div>
+                  <p className="text-sm font-semibold">{t.shareCard.guestTitle}</p>
+                  <p className="text-xs text-muted-foreground">{t.shareCard.guestDesc}</p>
+                </div>
+                <Switch checked={guest} onCheckedChange={setGuest} />
               </div>
-              <Switch checked={guest} onCheckedChange={setGuest} />
-            </label>
+
+              {guest && (
+                <div className="space-y-2.5 border-t border-border/70 pt-2.5">
+                  <div>
+                    <Label className="text-[11px] font-semibold text-muted-foreground">صلاحية رابط الضيف</Label>
+                    <div className="mt-1.5 grid grid-cols-4 gap-1">
+                      {[
+                        { id: "keep", label: "الحالي" },
+                        { id: "none", label: "بلا انتهاء" },
+                        { id: "24h", label: "يوم واحد" },
+                        { id: "7d", label: "أسبوع" },
+                      ].map((item) => (
+                        <button
+                          key={item.id}
+                          type="button"
+                          onClick={() => setGuestExpiryOption(item.id as typeof guestExpiryOption)}
+                          className={cn(
+                            "rounded-lg border px-1.5 py-1 text-center text-[11px] font-semibold transition-colors",
+                            guestExpiryOption === item.id
+                              ? "border-primary bg-primary text-primary-foreground"
+                              : "border-border text-muted-foreground hover:bg-muted"
+                          )}
+                        >
+                          {item.label}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+
+                  <div className="flex items-center justify-between rounded-xl bg-muted/40 p-2">
+                    <span className="text-xs">تدوير الرمز وإلغاء الرابط القديم</span>
+                    <Button
+                      type="button"
+                      size="sm"
+                      variant={rotateSlug ? "destructive" : "outline"}
+                      className="h-7 text-xs rounded-lg"
+                      onClick={() => setRotateSlug((v) => !v)}
+                    >
+                      <RefreshCw className={cn("size-3.5", rotateSlug && "animate-spin")} />
+                      {rotateSlug ? "سيتم التدوير" : "تدوير الرابط"}
+                    </Button>
+                  </div>
+                </div>
+              )}
+            </div>
 
             <div className="space-y-2.5">
               <Label className="text-xs font-semibold">{t.shareCard.deviceAccess}</Label>

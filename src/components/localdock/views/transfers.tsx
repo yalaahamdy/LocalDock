@@ -1,11 +1,12 @@
 "use client";
 
-import { useTransfers } from "@/lib/localdock/client/transfer-engine";
+import { transfers, useTransfers } from "@/lib/localdock/client/transfer-engine";
 import { TransferRow } from "../transfer-row";
 import { EmptyState } from "../empty-state";
-import { ArrowLeftRight, CheckCircle2 } from "lucide-react";
+import { ArrowLeftRight, CheckCircle2, RotateCcw, Trash2 } from "lucide-react";
 import { formatSpeed } from "@/lib/localdock/client/format";
 import { useI18n, Ltr } from "@/lib/localdock/i18n/provider";
+import { Button } from "@/components/ui/button";
 
 export function TransfersView() {
   const { t } = useI18n();
@@ -14,6 +15,21 @@ export function TransfersView() {
   const totalActiveSpeed = items
     .filter((i) => i.status === "active")
     .reduce((acc, i) => acc + i.speedBps, 0);
+
+  const failedItems = items.filter((i) => i.status === "failed");
+  const completedItems = items.filter((i) => i.status === "completed" || i.status === "canceled");
+
+  const clearCompleted = () => {
+    for (const it of completedItems) {
+      transfers.dismiss(it.id);
+    }
+  };
+
+  const retryAllFailed = () => {
+    for (const it of failedItems) {
+      transfers.retry(it.id);
+    }
+  };
 
   const SECTIONS = [
     { label: t.transfersView.active, hint: t.transfersView.activeHint, test: (s: string) => s === "active" || s === "queued" },
@@ -34,7 +50,7 @@ export function TransfersView() {
 
   return (
     <div className="space-y-7">
-      <div className="flex items-center justify-between">
+      <div className="flex flex-wrap items-center justify-between gap-3">
         <p className="text-sm text-muted-foreground">
           {totalActiveSpeed > 0 ? (
             <>
@@ -48,11 +64,35 @@ export function TransfersView() {
             t.transfersView.allSettled
           )}
         </p>
-        {items.some((i) => ["completed", "canceled"].includes(i.status)) && (
-          <span className="text-xs text-muted-foreground">
-            {t.transfersView.nCompleted(items.filter((i) => i.status === "completed").length)}
-          </span>
-        )}
+        <div className="flex flex-wrap items-center gap-2">
+          {failedItems.length > 0 && (
+            <Button
+              variant="outline"
+              size="sm"
+              className="h-8 rounded-xl text-xs"
+              onClick={retryAllFailed}
+            >
+              <RotateCcw className="size-3.5" />
+              إعادة محاولة الكل ({failedItems.length})
+            </Button>
+          )}
+          {completedItems.length > 0 && (
+            <Button
+              variant="outline"
+              size="sm"
+              className="h-8 rounded-xl text-xs text-muted-foreground hover:text-foreground"
+              onClick={clearCompleted}
+            >
+              <Trash2 className="size-3.5" />
+              مسح المكتملة ({completedItems.length})
+            </Button>
+          )}
+          {completedItems.length > 0 && (
+            <span className="text-xs text-muted-foreground sm:inline hidden">
+              {t.transfersView.nCompleted(items.filter((i) => i.status === "completed").length)}
+            </span>
+          )}
+        </div>
       </div>
 
       {SECTIONS.map((section) => {

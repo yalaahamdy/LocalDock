@@ -4,8 +4,7 @@
 import { getAuth, isOwner, isAuth, type ShareAction } from "./auth";
 import { jsonError } from "./files";
 import type { AuthContext, Share } from "./types";
-import { getShare } from "./registry";
-import { logActivity } from "./registry";
+import { getShare, getDeviceById, logActivity } from "./registry";
 import { canAccessShare } from "./auth";
 import { resolveLinkToken } from "./link-tokens";
 
@@ -63,8 +62,33 @@ export async function shareGuard(
     // identity — the token inherits exactly that identity's access.
     const token = new URL(req.url).searchParams.get("t") ?? "";
     const tokenAuth = token ? resolveLinkToken(token, shareId) : null;
-    if (tokenAuth) effectiveAuth = tokenAuth;
+    if (tokenAuth) {
+      if (tokenAuth.kind === "device" && tokenAuth.device) {
+        const stillTrusted = getDeviceById(tokenAuth.device.id);
+        if (!stillTrusted) {
+          effectiveAuth = { kind: "none" };
+        } else {
+          effectiveAuth = tokenAuth;
+        }
+      } else {
+        effectiveAuth = tokenAuth;
+      }
+    }
   }
+
+  // Check guest expiration if this is accessed as guest
+  const isGuestAccess = effectiveAuth.kind === "none" || effectiveAuth.kind === "guest";
+  if (isGuestAccess && share.guestEnabled && share.guestExpiresAt && Date.now() > share.guestExpiresAt) {
+    return {
+      deny: jsonError(
+        403,
+        "guest-link-expired",
+        "The guest link for this shared folder has expired.",
+        { key: "forbidden" }
+      ),
+    };
+  }
+
   if (!canAccessShare(effectiveAuth, share, action)) {
     void logActivity(
       "security.denied",

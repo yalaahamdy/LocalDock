@@ -250,11 +250,11 @@ export function AppShell({ onPairSuccess }: { onPairSuccess?: () => void }) {
             </div>
 
             {system.isLoading ? (
-              <Skeleton className="h-6 w-16 rounded-full" />
+              <Skeleton className="h-6 w-12 rounded-full" />
             ) : (
-              <span className="flex items-center gap-1.5 rounded-full border border-border/70 bg-card px-2 py-0.5 text-[10px] font-medium text-muted-foreground shadow-xs">
+              <span className="flex shrink-0 items-center gap-1.5 rounded-full border border-border/70 bg-card px-2 py-0.5 text-[10px] font-medium text-muted-foreground shadow-xs">
                 <StatusDot ok={online} />
-                {online ? t.status.online : t.status.offline}
+                <span className="hidden sm:inline">{online ? t.status.online : t.status.offline}</span>
               </span>
             )}
             {mounted && (

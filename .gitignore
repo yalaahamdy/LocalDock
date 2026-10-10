@@ -62,3 +62,8 @@ server.log
 /src-tauri/gen/
 /src-tauri/resources/server/
 /src-tauri/resources/bin/node.exe
+
+# Release artifacts & audit notes (assets uploaded directly to GitHub Releases)
+/release-artifacts/
+PREV/
+*.idsig

@@ -15,6 +15,8 @@ export interface Share {
   access: ShareAccess;
   /** When true, unpaired browsers may access this share (with `access` level). */
   guestEnabled: boolean;
+  /** Optional expiry timestamp for guest link access. */
+  guestExpiresAt?: number | null;
   /** "all" or a list of trusted device ids allowed to use this share. */
   allowedDevices: "all" | string[];
   /** Cached stats (recomputed asynchronously). */
@@ -49,16 +51,14 @@ export type ActivityType =
   | "share.deleted"
   | "file.uploaded"
   | "file.downloaded"
-  | "file.created"
-  | "file.renamed"
   | "file.deleted"
+  | "file.renamed"
+  | "folder.created"
   | "device.paired"
   | "device.revoked"
-  | "website.hosted"
-  | "website.stopped"
-  | "website.removed"
-  | "server.started"
-  | "transfer.failed"
+  | "website.created"
+  | "website.updated"
+  | "website.deleted"
   | "security.denied";
 
 export interface ActivityEntry {
@@ -67,11 +67,6 @@ export interface ActivityEntry {
   message: string;
   at: number;
   meta?: Record<string, string | number | boolean | null>;
-  /**
-   * Optional structured localization hint (i18n `activity` dictionary key +
-   * params). When present the client renders the localized variant; the raw
-   * `message` stays as fallback for unknown keys / old entries.
-   */
   loc?: { key: string; params?: Record<string, string | number> };
 }
 
@@ -81,16 +76,10 @@ export interface LocalDockSettings {
   ownerKey: string;
   createdAt: number;
   onboarded: boolean;
-  /** Desktop-build feature flag persisted for the Windows shell. */
   startWithWindows: boolean;
-  /**
-   * When false, owner APIs reject requests that do not originate from the
-   * server machine (loopback / private LAN). The packaged desktop build
-   * forces this to false. Demo/web preview keeps it true so the product is
-   * usable through its preview URL.
-   */
   allowRemoteOwner: boolean;
   theme: "light" | "dark" | "system";
+  lastPort?: number;
 }
 
 export interface SystemStatus {
@@ -112,6 +101,7 @@ export interface SystemStatus {
   /** Primary LAN IPv4 chosen server-side (same scoring as bootstrap). */
   lanIp?: string | null;
   storage: { freeBytes: number; totalBytes: number };
+  shareStorage?: { id: string; name: string; sizeBytes: number }[];
 }
 
 export interface FileEntry {
@@ -121,6 +111,8 @@ export interface FileEntry {
   modifiedAt: number;
   mimeType?: string;
   category: FileCategory;
+  /** Relative path inside the share (present on recursive search results). */
+  relPath?: string;
 }
 
 export type FileCategory =

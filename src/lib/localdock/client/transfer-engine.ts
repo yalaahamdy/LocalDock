@@ -31,6 +31,40 @@ const UPLOAD_PARALLEL = 3;
 /** IDM-style parallel range connections per download. */
 const DL_MAX_CONNECTIONS = 4;
 
+let wakeLockSentinel: unknown = null;
+
+async function syncWakeLock(active: boolean) {
+  if (typeof navigator === "undefined" || !("wakeLock" in navigator)) return;
+  try {
+    if (active) {
+      if (!wakeLockSentinel) {
+        wakeLockSentinel = await (navigator as unknown as { wakeLock: { request: (type: string) => Promise<unknown> } }).wakeLock.request("screen");
+        if (wakeLockSentinel && typeof (wakeLockSentinel as { addEventListener?: (ev: string, cb: () => void) => void }).addEventListener === "function") {
+          (wakeLockSentinel as { addEventListener: (ev: string, cb: () => void) => void }).addEventListener("release", () => {
+            wakeLockSentinel = null;
+          });
+        }
+      }
+    } else {
+      if (wakeLockSentinel && typeof (wakeLockSentinel as { release: () => Promise<void> }).release === "function") {
+        await (wakeLockSentinel as { release: () => Promise<void> }).release();
+        wakeLockSentinel = null;
+      }
+    }
+  } catch {
+    /* non-fatal: battery saver or hidden tab */
+  }
+}
+
+if (typeof document !== "undefined") {
+  document.addEventListener("visibilitychange", () => {
+    if (document.visibilityState === "visible") {
+      const active = useTransfers.getState().items.some((i) => i.status === "active");
+      if (active) void syncWakeLock(true);
+    }
+  });
+}
+
 /**
  * Minimal structural type for FileSystemWritableFileStream — avoids lib.dom
  * variance issues while keeping full type safety at the call sites.
@@ -527,6 +561,7 @@ class TransferEngine {
     );
     if (!next) return;
     this.running++;
+    void syncWakeLock(true);
     useTransfers.getState().patch(next.id, { status: "active", startedAt: Date.now() });
     void this.run(next)
       .catch((err: Error & { code?: string }) => {
@@ -534,6 +569,7 @@ class TransferEngine {
       })
       .finally(() => {
         this.running--;
+        void syncWakeLock(this.running > 0);
         this.persist();
         this.pump();
       });

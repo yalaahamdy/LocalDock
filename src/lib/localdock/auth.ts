@@ -44,8 +44,7 @@ export function getAuth(req: Request): AuthContext {
 
   const ownerKey =
     req.headers.get(OWNER_HEADER) ||
-    cookies["localdock_owner"] ||
-    urlParams?.get("ownerKey");
+    cookies["localdock_owner"];
 
   if (ownerKey) {
     const settings = getSettings();
@@ -60,8 +59,7 @@ export function getAuth(req: Request): AuthContext {
 
   const deviceToken =
     req.headers.get(DEVICE_HEADER) ||
-    cookies["localdock_device"] ||
-    urlParams?.get("deviceToken");
+    cookies["localdock_device"];
 
   if (deviceToken) {
     const device = findDeviceByToken(deviceToken);

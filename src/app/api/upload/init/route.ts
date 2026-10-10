@@ -1,5 +1,5 @@
 import { jsonError, jsonOk } from "@/lib/localdock/files";
-import { initUpload } from "@/lib/localdock/uploads";
+import { initUpload, gcUploads } from "@/lib/localdock/uploads";
 import { readJsonBody, shareGuard } from "@/lib/localdock/api-helpers";
 import { trackUploadStart } from "@/lib/localdock/transfer-activity";
 
@@ -25,6 +25,9 @@ export async function POST(req: Request) {
 
   const guard = await shareGuard(req, body.shareId, "write");
   if ("deny" in guard) return guard.deny;
+
+  // Trigger background garbage collection of stale uploads (A11)
+  void gcUploads();
 
   try {
     const result = await initUpload(guard.share.rootPath, {

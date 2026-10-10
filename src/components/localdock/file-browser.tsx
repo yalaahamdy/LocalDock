@@ -15,6 +15,7 @@ import {
   useTransfers,
   selectDockItems,
 } from "@/lib/localdock/client/transfer-engine";
+import { downloadSrc } from "@/lib/localdock/client/media";
 import { pickDeviceFolder, joinDirPath } from "@/lib/localdock/client/device-folder";
 import {
   formatBytes,
@@ -91,14 +92,23 @@ import {
   ArrowDownAZ,
   CalendarArrowDown,
   CalendarArrowUp,
+  Info,
+  Link as LinkIcon,
+  FolderArchive,
+  CheckSquare,
+  Plus,
 } from "lucide-react";
 import { toast } from "sonner";
 import { useI18n } from "@/lib/localdock/i18n";
 import type { LucideIcon } from "lucide-react";
 
 type SortKey = "name" | "size" | "modified";
+export type CategoryFilter = "all" | "image" | "video" | "audio" | "document" | "archive";
 
 const TILE_KEY = "localdock.tileSize";
+const VIEW_KEY = "localdock.fileView";
+const SORT_KEY = "localdock.fileSort";
+const SORT_ASC_KEY = "localdock.fileSortAsc";
 const TILE_MIN = 96;
 const TILE_MAX = 280;
 const TILE_DEFAULT = 160;
@@ -173,6 +183,8 @@ export function FileBrowser({
   const [view, setView] = useState<"grid" | "list">("grid");
   const [sort, setSort] = useState<SortKey>("name");
   const [sortAsc, setSortAsc] = useState(true);
+  const [categoryFilter, setCategoryFilter] = useState<CategoryFilter>("all");
+  const [propertiesTarget, setPropertiesTarget] = useState<{ entry: FileEntry; rel: string } | null>(null);
   const [query, setQuery] = useState("");
   const [serverSearch, setServerSearch] = useState(false);
   const [searchResults, setSearchResults] = useState<FileEntry[] | null>(null);
@@ -189,6 +201,34 @@ export function FileBrowser({
   const [remoteOpen, setRemoteOpen] = useState(false);
   const uploadRef = useRef<HTMLInputElement>(null);
   const refresh = useRefresh();
+
+  /* ---------- persistent view & sort preferences ---------- */
+  useEffect(() => {
+    try {
+      const savedView = window.localStorage.getItem(VIEW_KEY);
+      if (savedView === "grid" || savedView === "list") setView(savedView);
+      const savedSort = window.localStorage.getItem(SORT_KEY);
+      if (savedSort === "name" || savedSort === "size" || savedSort === "modified") setSort(savedSort as SortKey);
+      const savedAsc = window.localStorage.getItem(SORT_ASC_KEY);
+      if (savedAsc !== null) setSortAsc(savedAsc === "true");
+    } catch {
+      /* ignore */
+    }
+  }, []);
+
+  const changeView = (v: "grid" | "list") => {
+    setView(v);
+    try { window.localStorage.setItem(VIEW_KEY, v); } catch {}
+  };
+
+  const changeSort = (k: SortKey, asc: boolean) => {
+    setSort(k);
+    setSortAsc(asc);
+    try {
+      window.localStorage.setItem(SORT_KEY, k);
+      window.localStorage.setItem(SORT_ASC_KEY, String(asc));
+    } catch {}
+  };
 
   /* ---------- grid tile size (desktop-explorer style zoom) ---------- */
   useEffect(() => {
@@ -368,7 +408,18 @@ export function FileBrowser({
   const visible = useMemo(() => {
     const base = searchResults !== null ? searchResults : entries;
     const q = query.trim().toLowerCase();
-    const filtered = searchResults !== null ? base : base.filter((e) => e.name.toLowerCase().includes(q));
+    let filtered = searchResults !== null ? base : base.filter((e) => e.name.toLowerCase().includes(q));
+    if (categoryFilter !== "all") {
+      filtered = filtered.filter((e) => {
+        if (e.kind === "dir") return false;
+        if (categoryFilter === "image") return e.category === "image";
+        if (categoryFilter === "video") return e.category === "video";
+        if (categoryFilter === "audio") return e.category === "audio";
+        if (categoryFilter === "archive") return e.category === "archive";
+        if (categoryFilter === "document") return ["pdf", "text", "code"].includes(e.category);
+        return true;
+      });
+    }
     const sorted = [...filtered].sort((a, b) => {
       if (a.kind !== b.kind) return a.kind === "dir" ? -1 : 1;
       let cmp = 0;
@@ -378,7 +429,7 @@ export function FileBrowser({
       return sortAsc ? cmp : -cmp;
     });
     return sorted;
-  }, [entries, searchResults, query, sort, sortAsc]);
+  }, [entries, searchResults, query, sort, sortAsc, categoryFilter]);
 
   const joinPath = (dir: string, name: string) => (dir ? `${dir}/${name}` : name);
 
@@ -390,7 +441,7 @@ export function FileBrowser({
   /* ---------------- actions ---------------- */
 
   const openEntry = (entry: FileEntry) => {
-    const rel = joinPath(path, entry.name);
+    const rel = entry.relPath ?? joinPath(path, entry.name);
     if (entry.kind === "dir") {
       setQuery("");
       setSearchResults(null);
@@ -403,7 +454,36 @@ export function FileBrowser({
   };
 
   const downloadEntry = (entry: FileEntry) => {
-    const rel = joinPath(path, entry.name);
+    const rel = entry.relPath ?? joinPath(path, entry.name);
+    const isMobileBrowser =
+      typeof window !== "undefined" &&
+      /android|iphone|ipad/i.test(navigator.userAgent) &&
+      !("showSaveFilePicker" in window) &&
+      !((window as unknown as { LocalDockAndroid?: unknown }).LocalDockAndroid);
+
+    if (isMobileBrowser && entry.size > 25 * 1024 * 1024) {
+      void downloadSrc(shareId, rel).then((directUrl) => {
+        const a = document.createElement("a");
+        a.href = directUrl;
+        a.download = entry.name;
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+        toast.success(t.fileBrowser.downloadingToast(entry.name), {
+          icon: <ArrowDownToLine className="size-4" />,
+        });
+      }).catch(() => {
+        transfers.enqueueDownload({
+          shareId,
+          shareName,
+          filePath: rel,
+          name: entry.name,
+          size: entry.size,
+        });
+      });
+      return;
+    }
+
     transfers.enqueueDownload({
       shareId,
       shareName,
@@ -414,6 +494,25 @@ export function FileBrowser({
     toast.success(t.fileBrowser.downloadingToast(entry.name), {
       icon: <ArrowDownToLine className="size-4" />,
     });
+  };
+
+  const downloadFolderZip = (folderPath: string, folderName: string) => {
+    const url = `/api/shares/${encodeURIComponent(shareId)}/zip?path=${encodeURIComponent(folderPath)}`;
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = `${folderName || shareName || "folder"}.zip`;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    toast.success(`${t.common.download} ZIP: ${folderName || shareName}`);
+  };
+
+  const selectAll = () => {
+    setSelected(new Set(visible.map((e) => e.name)));
+  };
+
+  const deselectAll = () => {
+    setSelected(new Set());
   };
 
   const uploadFiles = (files: FileList | File[]) => {
@@ -484,7 +583,8 @@ export function FileBrowser({
     }
     setBusy(true);
     try {
-      await Api.renameEntry(shareId, joinPath(path, renameTarget.name), name);
+      const targetRel = renameTarget.relPath ?? joinPath(path, renameTarget.name);
+      await Api.renameEntry(shareId, targetRel, name);
       toast.success(t.fileBrowser.renamedToast);
       setRenameTarget(null);
       await load(path);
@@ -500,7 +600,7 @@ export function FileBrowser({
     setBusy(true);
     try {
       for (const target of deleteTargets) {
-        await Api.deleteEntry(shareId, joinPath(path, target.name));
+        await Api.deleteEntry(shareId, target.relPath ?? joinPath(path, target.name));
       }
       toast.success(
         deleteTargets.length === 1
@@ -536,7 +636,7 @@ export function FileBrowser({
 
   /** Files in the current view (preview navigation order). */
   const fileSiblings = useMemo(
-    () => visible.filter((e) => e.kind === "file").map((e) => ({ entry: e, rel: joinPath(path, e.name) })),
+    () => visible.filter((e) => e.kind === "file").map((e) => ({ entry: e, rel: e.relPath ?? joinPath(path, e.name) })),
     [visible, path]
   );
 
@@ -629,164 +729,276 @@ export function FileBrowser({
         </div>
       </div>
 
-      {/* controls row — search grows, everything else is a compact icon */}
-      <div className="mt-1.5 flex items-center gap-1.5">
-        <div className="relative min-w-0 flex-1 sm:max-w-56">
-          <Search className="absolute start-2.5 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
-          <Input
-            value={query}
-            onChange={(e) => setQuery(e.target.value)}
-            placeholder={t.common.search}
-            className="h-9 w-full rounded-xl ps-8"
-            aria-label={t.fileBrowser.searchAria}
-          />
-          {query && (
-            <button
-              className="absolute end-2 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
-              onClick={() => setQuery("")}
-              aria-label={t.fileBrowser.clearSearchAria}
-            >
-              <X className="size-3.5" />
-            </button>
+      {/* controls row — fully responsive, wraps elegantly on phones so no button ever overflows */}
+      <div className="mt-1.5 flex flex-col gap-2 sm:flex-row sm:items-center sm:gap-1.5">
+        {/* Row 1 on mobile: search bar + primary upload actions */}
+        <div className="flex items-center gap-1.5 min-w-0 flex-1">
+          <div className="relative min-w-0 flex-1 sm:max-w-64">
+            <Search className="absolute start-2.5 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
+            <Input
+              value={query}
+              onChange={(e) => setQuery(e.target.value)}
+              placeholder={t.common.search}
+              className="h-9 w-full rounded-xl ps-8"
+              aria-label={t.fileBrowser.searchAria}
+            />
+            {query && (
+              <button
+                className="absolute end-2 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
+                onClick={() => setQuery("")}
+                aria-label={t.fileBrowser.clearSearchAria}
+              >
+                <X className="size-3.5" />
+              </button>
+            )}
+          </div>
+
+          {/* Quick upload & actions on mobile */}
+          {writable && (
+            <div className="flex shrink-0 items-center gap-1 sm:hidden">
+              <Button size="sm" className="h-9 rounded-xl px-2.5 font-medium" onClick={() => uploadRef.current?.click()}>
+                <Upload className="size-4" />
+                <span className="ms-1">{t.fileBrowser.upload}</span>
+              </Button>
+              <DropdownMenu>
+                <DropdownMenuTrigger asChild>
+                  <Button size="icon" variant="outline" className="size-9 rounded-xl" title="خيارات إضافية">
+                    <Plus className="size-4" />
+                  </Button>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent align="end" className="rounded-xl">
+                  <DropdownMenuItem onClick={() => void uploadFolderFromDevice()}>
+                    <FolderUp className="size-4" /> {t.fileBrowser.uploadFolderAria}
+                  </DropdownMenuItem>
+                  <DropdownMenuItem onClick={() => setNewFolderOpen(true)}>
+                    <FolderPlus className="size-4" /> {t.fileBrowser.newFolderAria}
+                  </DropdownMenuItem>
+                </DropdownMenuContent>
+              </DropdownMenu>
+            </div>
           )}
         </div>
 
-        <DropdownMenu>
-          <DropdownMenuTrigger asChild>
-            <Button
-              size="icon"
-              variant="outline"
-              className="size-9 shrink-0 rounded-xl"
-              aria-label={t.fileBrowser.sortAria}
-              title={t.fileBrowser.sortTitle}
-            >
-              {sort === "name" ? (
-                sortAsc ? <ArrowUpAZ className="size-4" /> : <ArrowDownAZ className="size-4" />
-              ) : (
-                sortAsc ? <CalendarArrowUp className="size-4" /> : <CalendarArrowDown className="size-4" />
-              )}
-            </Button>
-          </DropdownMenuTrigger>
-          <DropdownMenuContent align="end" className="rounded-xl">
-            <DropdownMenuItem onClick={() => { setSort("name"); setSortAsc(true); }}>
-              <ArrowUpAZ className="size-4" /> {t.fileBrowser.sortNameAsc}
-            </DropdownMenuItem>
-            <DropdownMenuItem onClick={() => { setSort("name"); setSortAsc(false); }}>
-              <ArrowDownAZ className="size-4" /> {t.fileBrowser.sortNameDesc}
-            </DropdownMenuItem>
-            <DropdownMenuItem onClick={() => { setSort("modified"); setSortAsc(false); }}>
-              <CalendarArrowDown className="size-4" /> {t.fileBrowser.sortNewest}
-            </DropdownMenuItem>
-            <DropdownMenuItem onClick={() => { setSort("modified"); setSortAsc(true); }}>
-              <CalendarArrowUp className="size-4" /> {t.fileBrowser.sortOldest}
-            </DropdownMenuItem>
-            <DropdownMenuSeparator />
-            <DropdownMenuItem onClick={() => { setSort("size"); setSortAsc(false); }}>
-              <Package className="size-4" /> {t.fileBrowser.sortLargest}
-            </DropdownMenuItem>
-            <DropdownMenuItem onClick={() => { setSort("size"); setSortAsc(true); }}>
-              <Package className="size-4" /> {t.fileBrowser.sortSmallest}
-            </DropdownMenuItem>
-          </DropdownMenuContent>
-        </DropdownMenu>
-
-        <div className="flex shrink-0 overflow-hidden rounded-xl border border-border">
-          <button
-            onClick={() => setView("grid")}
-            className={cn("p-2 transition-colors", view === "grid" ? "bg-accent text-accent-foreground" : "text-muted-foreground hover:bg-muted")}
-            aria-label={t.fileBrowser.gridAria}
-          >
-            <Grid2X2 className="size-4" />
-          </button>
-          <button
-            onClick={() => setView("list")}
-            className={cn("p-2 transition-colors", view === "list" ? "bg-accent text-accent-foreground" : "text-muted-foreground hover:bg-muted")}
-            aria-label={t.fileBrowser.listAria}
-          >
-            <List className="size-4" />
-          </button>
-        </div>
-
-        {/* Explorer-style icon-size zoom — one compact button everywhere,
-            opens presets + slider in a popover (fits any narrow screen). */}
-        {view === "grid" && (
-          <Popover>
-            <PopoverTrigger asChild>
+        {/* Row 2 on mobile (inline on desktop): view controls & secondary actions */}
+        <div className="ld-scroll flex w-full sm:w-auto items-center gap-1.5 overflow-x-auto py-0.5 max-w-full">
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
               <Button
                 size="icon"
                 variant="outline"
                 className="size-9 shrink-0 rounded-xl"
-                aria-label={t.fileBrowser.iconSizeAria}
-                title={t.fileBrowser.iconSizeTitle}
+                aria-label={t.fileBrowser.sortAria}
+                title={t.fileBrowser.sortTitle}
               >
-                <Scaling className="size-4" />
+                {sort === "name" ? (
+                  sortAsc ? <ArrowUpAZ className="size-4" /> : <ArrowDownAZ className="size-4" />
+                ) : (
+                  sortAsc ? <CalendarArrowUp className="size-4" /> : <CalendarArrowDown className="size-4" />
+                )}
               </Button>
-            </PopoverTrigger>
-            <PopoverContent align="end" className="w-60 rounded-xl p-3">
-              <div className="flex items-center justify-between text-xs font-semibold">
-                <span>{t.fileBrowser.iconSizeTitle}</span>
-                <span className="tnum text-muted-foreground">{tilePct}%</span>
-              </div>
-              <div className="mt-2 grid grid-cols-4 gap-1">
-                {TILE_PRESETS.map((p, idx) => (
-                  <button
-                    key={p.v}
-                    onClick={() => changeTile(p.v)}
-                    className={cn(
-                      "rounded-lg border px-1 py-1.5 text-[11px] font-semibold transition-colors",
-                      tile === p.v
-                        ? "border-primary/60 bg-accent text-accent-foreground"
-                        : "border-border text-muted-foreground hover:bg-muted"
-                    )}
-                  >
-                    {[t.fileBrowser.tileS, t.fileBrowser.tileM, t.fileBrowser.tileL, t.fileBrowser.tileXL][idx]}
-                  </button>
-                ))}
-              </div>
-              <input
-                type="range"
-                min={TILE_MIN}
-                max={TILE_MAX}
-                step={8}
-                value={tile}
-                onChange={(e) => changeTile(Number(e.target.value))}
-                className="ld-zoom mt-3 w-full"
-                aria-label={t.fileBrowser.gridIconSizeAria}
-              />
-            </PopoverContent>
-          </Popover>
-        )}
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="end" className="rounded-xl">
+              <DropdownMenuItem onClick={() => changeSort("name", true)}>
+                <ArrowUpAZ className="size-4" /> {t.fileBrowser.sortNameAsc}
+              </DropdownMenuItem>
+              <DropdownMenuItem onClick={() => changeSort("name", false)}>
+                <ArrowDownAZ className="size-4" /> {t.fileBrowser.sortNameDesc}
+              </DropdownMenuItem>
+              <DropdownMenuItem onClick={() => changeSort("modified", false)}>
+                <CalendarArrowDown className="size-4" /> {t.fileBrowser.sortNewest}
+              </DropdownMenuItem>
+              <DropdownMenuItem onClick={() => changeSort("modified", true)}>
+                <CalendarArrowUp className="size-4" /> {t.fileBrowser.sortOldest}
+              </DropdownMenuItem>
+              <DropdownMenuSeparator />
+              <DropdownMenuItem onClick={() => changeSort("size", false)}>
+                <Package className="size-4" /> {t.fileBrowser.sortLargest}
+              </DropdownMenuItem>
+              <DropdownMenuItem onClick={() => changeSort("size", true)}>
+                <Package className="size-4" /> {t.fileBrowser.sortSmallest}
+              </DropdownMenuItem>
+            </DropdownMenuContent>
+          </DropdownMenu>
 
-        {/* core actions — always visible in the toolbar, nothing floating */}
-        {writable && (
-          <div className="ms-auto flex shrink-0 items-center gap-1.5">
-            <Button size="sm" className="h-9 rounded-xl px-2.5 sm:px-3" onClick={() => uploadRef.current?.click()}>
-              <Upload className="size-4" />
-              <span className="hidden sm:inline">{t.fileBrowser.upload}</span>
-            </Button>
-            <Button
-              size="icon"
-              variant="outline"
-              className="size-9 rounded-xl"
-              onClick={() => void uploadFolderFromDevice()}
-              aria-label={t.fileBrowser.uploadFolderAria}
-              title={t.fileBrowser.uploadFolderAria}
+          <div className="flex shrink-0 overflow-hidden rounded-xl border border-border">
+            <button
+              onClick={() => changeView("grid")}
+              className={cn("p-2 transition-colors", view === "grid" ? "bg-accent text-accent-foreground" : "text-muted-foreground hover:bg-muted")}
+              aria-label={t.fileBrowser.gridAria}
             >
-              <FolderUp className="size-4" />
-            </Button>
-            <Button
-              size="icon"
-              variant="outline"
-              className="size-9 rounded-xl"
-              onClick={() => setNewFolderOpen(true)}
-              aria-label={t.fileBrowser.newFolderAria}
-              title={t.fileBrowser.newFolderAria}
+              <Grid2X2 className="size-4" />
+            </button>
+            <button
+              onClick={() => changeView("list")}
+              className={cn("p-2 transition-colors", view === "list" ? "bg-accent text-accent-foreground" : "text-muted-foreground hover:bg-muted")}
+              aria-label={t.fileBrowser.listAria}
             >
-              <FolderPlus className="size-4" />
-            </Button>
+              <List className="size-4" />
+            </button>
           </div>
-        )}
+
+          {/* Toggle select all / deselect all */}
+          <Button
+            size="icon"
+            variant={selected.size > 0 && selected.size === visible.length ? "secondary" : "outline"}
+            className="size-9 shrink-0 rounded-xl"
+            onClick={() => {
+              if (selected.size === visible.length && visible.length > 0) {
+                deselectAll();
+              } else {
+                selectAll();
+              }
+            }}
+            aria-label={selected.size > 0 ? t.fileBrowser.clearSelectionAria : "تحديد الكل"}
+            title={selected.size > 0 ? t.fileBrowser.clearSelectionAria : "تحديد الكل"}
+          >
+            <CheckSquare className="size-4" />
+          </Button>
+
+          {/* Download current folder as zip */}
+          <Button
+            size="icon"
+            variant="outline"
+            className="size-9 shrink-0 rounded-xl"
+            onClick={() => downloadFolderZip(path, crumbs[crumbs.length - 1]?.name || shareName)}
+            aria-label="تنزيل المجلد كـ ZIP"
+            title="تنزيل المجلد كـ ZIP"
+          >
+            <FolderArchive className="size-4" />
+          </Button>
+
+          {/* Explorer-style icon-size zoom */}
+          {view === "grid" && (
+            <Popover>
+              <PopoverTrigger asChild>
+                <Button
+                  size="icon"
+                  variant="outline"
+                  className="size-9 shrink-0 rounded-xl"
+                  aria-label={t.fileBrowser.iconSizeAria}
+                  title={t.fileBrowser.iconSizeTitle}
+                >
+                  <Scaling className="size-4" />
+                </Button>
+              </PopoverTrigger>
+              <PopoverContent align="end" className="w-60 rounded-xl p-3">
+                <div className="flex items-center justify-between text-xs font-semibold">
+                  <span>{t.fileBrowser.iconSizeTitle}</span>
+                  <span className="tnum text-muted-foreground">{tilePct}%</span>
+                </div>
+                <div className="mt-2 grid grid-cols-4 gap-1">
+                  {TILE_PRESETS.map((p, idx) => (
+                    <button
+                      key={p.v}
+                      onClick={() => changeTile(p.v)}
+                      className={cn(
+                        "rounded-lg border px-1 py-1.5 text-[11px] font-semibold transition-colors",
+                        tile === p.v
+                          ? "border-primary/60 bg-accent text-accent-foreground"
+                          : "border-border text-muted-foreground hover:bg-muted"
+                      )}
+                    >
+                      {[t.fileBrowser.tileS, t.fileBrowser.tileM, t.fileBrowser.tileL, t.fileBrowser.tileXL][idx]}
+                    </button>
+                  ))}
+                </div>
+                <input
+                  type="range"
+                  min={TILE_MIN}
+                  max={TILE_MAX}
+                  step={8}
+                  value={tile}
+                  onChange={(e) => changeTile(Number(e.target.value))}
+                  className="ld-zoom mt-3 w-full"
+                  aria-label={t.fileBrowser.gridIconSizeAria}
+                />
+              </PopoverContent>
+            </Popover>
+          )}
+
+          {/* Desktop full action buttons */}
+          {writable && (
+            <div className="hidden sm:flex ms-auto shrink-0 items-center gap-1.5">
+              <Button size="sm" className="h-9 rounded-xl px-3" onClick={() => uploadRef.current?.click()}>
+                <Upload className="size-4" />
+                <span>{t.fileBrowser.upload}</span>
+              </Button>
+              <Button
+                size="icon"
+                variant="outline"
+                className="size-9 rounded-xl"
+                onClick={() => void uploadFolderFromDevice()}
+                aria-label={t.fileBrowser.uploadFolderAria}
+                title={t.fileBrowser.uploadFolderAria}
+              >
+                <FolderUp className="size-4" />
+              </Button>
+              <Button
+                size="icon"
+                variant="outline"
+                className="size-9 rounded-xl"
+                onClick={() => setNewFolderOpen(true)}
+                aria-label={t.fileBrowser.newFolderAria}
+                title={t.fileBrowser.newFolderAria}
+              >
+                <FolderPlus className="size-4" />
+              </Button>
+            </div>
+          )}
+        </div>
       </div>
+
+      {/* Category filters row */}
+      <div className="ld-scroll mt-2 flex items-center gap-1 overflow-x-auto pb-0.5 text-xs">
+        {(
+          [
+            { id: "all", label: "الكل" },
+            { id: "image", label: "صور" },
+            { id: "video", label: "فيديو" },
+            { id: "audio", label: "صوتيات" },
+            { id: "document", label: "مستندات" },
+            { id: "archive", label: "أرشيف" },
+          ] as const
+        ).map((cat) => (
+          <button
+            key={cat.id}
+            type="button"
+            onClick={() => setCategoryFilter(cat.id)}
+            className={cn(
+              "shrink-0 rounded-lg px-2.5 py-1 font-medium transition-colors",
+              categoryFilter === cat.id
+                ? "bg-primary text-primary-foreground shadow-xs"
+                : "bg-muted/70 text-muted-foreground hover:bg-muted hover:text-foreground"
+            )}
+          >
+            {cat.label}
+          </button>
+        ))}
+      </div>
+
+      {/* Search scope badge & reset */}
+      {(query || searchActive) && (
+        <div className="mt-1.5 flex items-center justify-between gap-2 rounded-xl border border-primary/30 bg-primary/5 px-3 py-1.5 text-xs">
+          <div className="flex min-w-0 items-center gap-1.5">
+            <Search className="size-3.5 shrink-0 text-primary" />
+            <span className="truncate">
+              نطاق البحث: <strong className="text-foreground">{crumbs[crumbs.length - 1]?.name || shareName}</strong>
+              {query && <span className="ms-1 text-muted-foreground">("{query}" · {visible.length})</span>}
+            </span>
+          </div>
+          <Button
+            variant="ghost"
+            size="sm"
+            className="h-6 rounded-lg px-2 text-[11px] text-muted-foreground hover:text-foreground"
+            onClick={() => {
+              setQuery("");
+              setSearchResults(null);
+            }}
+          >
+            مسح
+          </Button>
+        </div>
+      )}
 
       {/* mobile status line (desktop shows the same info beside breadcrumbs) */}
       <div className="mt-1.5 flex items-center gap-2 text-[11px] text-muted-foreground sm:hidden">
@@ -1026,24 +1238,29 @@ export function FileBrowser({
               } as React.CSSProperties
             }
           >
-            {visible.map((entry) => (
-              <GridCard
-                key={`${entry.kind}:${entry.name}`}
-                entry={entry}
-                shareId={shareId}
-                relPath={joinPath(path, entry.name)}
-                selected={selected.has(entry.name)}
-                onSelect={(additive) => toggleSelect(entry.name, additive)}
-                onOpen={() => openEntry(entry)}
-                onDownload={() => downloadEntry(entry)}
-                onRename={() => {
-                  setRenameTarget(entry);
-                  setRenameValue(entry.name);
-                }}
-                onDelete={() => setDeleteTargets([entry])}
-                writable={writable}
-              />
-            ))}
+            {visible.map((entry) => {
+              const rel = entry.relPath ?? joinPath(path, entry.name);
+              return (
+                <GridCard
+                  key={`${entry.kind}:${entry.name}`}
+                  entry={entry}
+                  shareId={shareId}
+                  relPath={rel}
+                  selected={selected.has(entry.name)}
+                  onSelect={(additive) => toggleSelect(entry.name, additive)}
+                  onOpen={() => openEntry(entry)}
+                  onDownload={() => downloadEntry(entry)}
+                  onRename={() => {
+                    setRenameTarget(entry);
+                    setRenameValue(entry.name);
+                  }}
+                  onDelete={() => setDeleteTargets([entry])}
+                  onProperties={() => setPropertiesTarget({ entry, rel })}
+                  onDownloadZip={entry.kind === "dir" ? () => downloadFolderZip(rel, entry.name) : undefined}
+                  writable={writable}
+                />
+              );
+            })}
           </div>
         ) : (
           <div className="overflow-hidden rounded-2xl border border-border/70 bg-card">
@@ -1064,24 +1281,29 @@ export function FileBrowser({
                 </tr>
               </thead>
               <tbody className="divide-y divide-border/50">
-                {visible.map((entry) => (
-                  <ListRow
-                    key={`${entry.kind}:${entry.name}`}
-                    entry={entry}
-                    shareId={shareId}
-                    relPath={joinPath(path, entry.name)}
-                    selected={selected.has(entry.name)}
-                    onSelect={(additive) => toggleSelect(entry.name, additive)}
-                    onOpen={() => openEntry(entry)}
-                    onDownload={() => downloadEntry(entry)}
-                    onRename={() => {
-                      setRenameTarget(entry);
-                      setRenameValue(entry.name);
-                    }}
-                    onDelete={() => setDeleteTargets([entry])}
-                    writable={writable}
-                  />
-                ))}
+                {visible.map((entry) => {
+                  const rel = entry.relPath ?? joinPath(path, entry.name);
+                  return (
+                    <ListRow
+                      key={`${entry.kind}:${entry.name}`}
+                      entry={entry}
+                      shareId={shareId}
+                      relPath={rel}
+                      selected={selected.has(entry.name)}
+                      onSelect={(additive) => toggleSelect(entry.name, additive)}
+                      onOpen={() => openEntry(entry)}
+                      onDownload={() => downloadEntry(entry)}
+                      onRename={() => {
+                        setRenameTarget(entry);
+                        setRenameValue(entry.name);
+                      }}
+                      onDelete={() => setDeleteTargets([entry])}
+                      onProperties={() => setPropertiesTarget({ entry, rel })}
+                      onDownloadZip={entry.kind === "dir" ? () => downloadFolderZip(rel, entry.name) : undefined}
+                      writable={writable}
+                    />
+                  );
+                })}
               </tbody>
             </table>
           </div>
@@ -1252,6 +1474,81 @@ export function FileBrowser({
         </AlertDialogContent>
       </AlertDialog>
 
+      {/* Properties dialog */}
+      <Dialog open={!!propertiesTarget} onOpenChange={(v) => !v && setPropertiesTarget(null)}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <Info className="size-5 text-primary" />
+              تفاصيل الملف والخصائص
+            </DialogTitle>
+          </DialogHeader>
+          {propertiesTarget && (
+            <div className="space-y-3 py-2 text-sm">
+              <div className="space-y-2 rounded-xl border border-border/70 bg-muted/30 p-3">
+                <div className="flex items-start justify-between gap-2">
+                  <span className="text-xs text-muted-foreground">الاسم:</span>
+                  <span className="break-all font-semibold text-end">{propertiesTarget.entry.name}</span>
+                </div>
+                <div className="flex items-start justify-between gap-2">
+                  <span className="text-xs text-muted-foreground">المسار:</span>
+                  <span className="break-all font-mono text-xs text-muted-foreground text-end">/{propertiesTarget.rel}</span>
+                </div>
+                <div className="flex items-center justify-between gap-2">
+                  <span className="text-xs text-muted-foreground">النوع:</span>
+                  <span className="text-xs font-medium uppercase">{propertiesTarget.entry.kind === "dir" ? "مجلد" : propertiesTarget.entry.category}</span>
+                </div>
+                <div className="flex items-center justify-between gap-2">
+                  <span className="text-xs text-muted-foreground">الحجم:</span>
+                  <span className="tnum text-xs font-semibold">
+                    {propertiesTarget.entry.kind === "dir" ? "—" : `${formatBytes(propertiesTarget.entry.size)} (${propertiesTarget.entry.size.toLocaleString()} بايت)`}
+                  </span>
+                </div>
+                <div className="flex items-center justify-between gap-2">
+                  <span className="text-xs text-muted-foreground">آخر تعديل:</span>
+                  <span className="tnum text-xs text-muted-foreground">{formatDateTime(propertiesTarget.entry.modifiedAt)}</span>
+                </div>
+              </div>
+
+              {propertiesTarget.entry.kind === "file" && (
+                <div className="flex gap-2">
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    className="flex-1 rounded-xl"
+                    onClick={() => {
+                      const link = `${window.location.origin}/api/shares/${encodeURIComponent(shareId)}/file?path=${encodeURIComponent(propertiesTarget.rel)}`;
+                      void navigator.clipboard.writeText(link);
+                      toast.success("تم نسخ الرابط المباشر");
+                    }}
+                  >
+                    <LinkIcon className="size-4" />
+                    نسخ الرابط المباشر
+                  </Button>
+                  <Button
+                    variant="default"
+                    size="sm"
+                    className="flex-1 rounded-xl"
+                    onClick={() => {
+                      downloadEntry(propertiesTarget.entry);
+                      setPropertiesTarget(null);
+                    }}
+                  >
+                    <ArrowDownToLine className="size-4" />
+                    تنزيل الملف
+                  </Button>
+                </div>
+              )}
+            </div>
+          )}
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setPropertiesTarget(null)}>
+              {t.common.close}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
     </div>
   );
 }
@@ -1395,6 +1692,8 @@ function GridCard({
   onDownload,
   onRename,
   onDelete,
+  onProperties,
+  onDownloadZip,
   writable,
 }: {
   entry: FileEntry;
@@ -1406,15 +1705,35 @@ function GridCard({
   onDownload: () => void;
   onRename: () => void;
   onDelete: () => void;
+  onProperties?: () => void;
+  onDownloadZip?: () => void;
   writable: boolean;
 }) {
   const { t } = useI18n();
   const canThumb =
     entry.kind === "file" && (entry.category === "image" || entry.category === "video");
+  const touchTimer = useRef<NodeJS.Timeout | null>(null);
+
+  const handleTouchStart = () => {
+    touchTimer.current = setTimeout(() => {
+      onSelect(true);
+      if (typeof navigator !== "undefined" && "vibrate" in navigator) {
+        try { navigator.vibrate(40); } catch {}
+      }
+    }, 450);
+  };
+
+  const handleTouchEnd = () => {
+    if (touchTimer.current) {
+      clearTimeout(touchTimer.current);
+      touchTimer.current = null;
+    }
+  };
+
   return (
     <div
       className={cn(
-        "group relative flex cursor-pointer flex-col items-center rounded-xl border p-1.5 text-center transition-all",
+        "group relative flex cursor-pointer flex-col items-center rounded-xl border p-1.5 text-center transition-all select-none",
         selected
           ? "border-primary bg-accent/50 ring-1 ring-primary/40"
           : "border-border/70 bg-card hover:border-primary/40 hover:shadow-card"
@@ -1423,6 +1742,9 @@ function GridCard({
         onSelect(e.ctrlKey || e.metaKey || e.shiftKey);
         if (!e.ctrlKey && !e.metaKey && !e.shiftKey) onOpen();
       }}
+      onTouchStart={handleTouchStart}
+      onTouchEnd={handleTouchEnd}
+      onTouchMove={handleTouchEnd}
       role="button"
       tabIndex={0}
       onKeyDown={(e) => e.key === "Enter" && onOpen()}
@@ -1441,8 +1763,7 @@ function GridCard({
         }}
         aria-hidden
       />
-      {/* Media box scales WITH the zoom slider — the thumbnail itself grows,
-          the padding stays fixed. This is the Explorer behaviour. */}
+      {/* Media box scales WITH the zoom slider */}
       <span
         className="flex w-full items-center justify-center overflow-hidden rounded-lg bg-muted/40"
         style={{ height: "calc(var(--tile) * 0.72)" }}
@@ -1470,10 +1791,14 @@ function GridCard({
       <div className="absolute end-0.5 top-0.5 z-10">
         <RowMenu
           entry={entry}
+          shareId={shareId}
+          relPath={relPath}
           onOpen={onOpen}
           onDownload={onDownload}
           onRename={onRename}
           onDelete={onDelete}
+          onProperties={onProperties}
+          onDownloadZip={onDownloadZip}
           writable={writable}
         />
       </div>
@@ -1491,6 +1816,8 @@ function ListRow({
   onDownload,
   onRename,
   onDelete,
+  onProperties,
+  onDownloadZip,
   writable,
 }: {
   entry: FileEntry;
@@ -1502,18 +1829,41 @@ function ListRow({
   onDownload: () => void;
   onRename: () => void;
   onDelete: () => void;
+  onProperties?: () => void;
+  onDownloadZip?: () => void;
   writable: boolean;
 }) {
   const { t } = useI18n();
   const canThumb =
     entry.kind === "file" && (entry.category === "image" || entry.category === "video");
+  const touchTimer = useRef<NodeJS.Timeout | null>(null);
+
+  const handleTouchStart = () => {
+    touchTimer.current = setTimeout(() => {
+      onSelect(true);
+      if (typeof navigator !== "undefined" && "vibrate" in navigator) {
+        try { navigator.vibrate(40); } catch {}
+      }
+    }, 450);
+  };
+
+  const handleTouchEnd = () => {
+    if (touchTimer.current) {
+      clearTimeout(touchTimer.current);
+      touchTimer.current = null;
+    }
+  };
+
   return (
     <tr
-      className={cn("cursor-pointer transition-colors", selected ? "bg-accent/50" : "hover:bg-muted/50")}
+      className={cn("cursor-pointer transition-colors select-none", selected ? "bg-accent/50" : "hover:bg-muted/50")}
       onClick={(e) => {
         onSelect(e.ctrlKey || e.metaKey || e.shiftKey);
         if (!e.ctrlKey && !e.metaKey && !e.shiftKey) onOpen();
       }}
+      onTouchStart={handleTouchStart}
+      onTouchEnd={handleTouchEnd}
+      onTouchMove={handleTouchEnd}
     >
       <td className="px-3 py-2.5">
         <span
@@ -1533,7 +1883,6 @@ function ListRow({
           />
           <div className="min-w-0 flex-1">
             <span className="block truncate font-medium">{entry.name}</span>
-            {/* Phones: the Size / Modified columns are hidden, surface them here */}
             <span className="mt-0.5 flex items-center gap-1.5 text-[11px] text-muted-foreground md:hidden">
               <span className="sm:hidden">{entry.kind === "dir" ? t.fileBrowser.folderType : formatBytes(entry.size)}</span>
               <span className="hidden sm:inline">{formatDateTime(entry.modifiedAt)}</span>
@@ -1550,10 +1899,14 @@ function ListRow({
       <td className="px-2 py-2.5" onClick={(e) => e.stopPropagation()}>
         <RowMenu
           entry={entry}
+          shareId={shareId}
+          relPath={relPath}
           onOpen={onOpen}
           onDownload={onDownload}
           onRename={onRename}
           onDelete={onDelete}
+          onProperties={onProperties}
+          onDownloadZip={onDownloadZip}
           writable={writable}
         />
       </td>
@@ -1563,17 +1916,25 @@ function ListRow({
 
 function RowMenu({
   entry,
+  shareId,
+  relPath,
   onOpen,
   onDownload,
   onRename,
   onDelete,
+  onProperties,
+  onDownloadZip,
   writable,
 }: {
   entry: FileEntry;
+  shareId: string;
+  relPath: string;
   onOpen: () => void;
   onDownload: () => void;
   onRename: () => void;
   onDelete: () => void;
+  onProperties?: () => void;
+  onDownloadZip?: () => void;
   writable: boolean;
 }) {
   const [copied, setCopied] = useState(false);
@@ -1602,8 +1963,14 @@ function RowMenu({
             {t.common.download}
           </DropdownMenuItem>
         )}
+        {entry.kind === "dir" && onDownloadZip && (
+          <DropdownMenuItem onClick={onDownloadZip}>
+            <FolderArchive className="size-4" />
+            تنزيل كـ ZIP
+          </DropdownMenuItem>
+        )}
         <DropdownMenuItem
-          onClick={async (e) => {
+          onClick={async () => {
             try {
               await navigator.clipboard.writeText(entry.name);
               setCopied(true);
@@ -1616,6 +1983,37 @@ function RowMenu({
           {copied ? <Check className="size-4 text-success" /> : <Copy className="size-4" />}
           {t.fileBrowser.copyName}
         </DropdownMenuItem>
+        <DropdownMenuItem
+          onClick={async () => {
+            try {
+              await navigator.clipboard.writeText(relPath);
+              toast.success("تم نسخ مسار الملف");
+            } catch {}
+          }}
+        >
+          <Copy className="size-4" />
+          نسخ المسار
+        </DropdownMenuItem>
+        {entry.kind === "file" && (
+          <DropdownMenuItem
+            onClick={async () => {
+              try {
+                const link = `${window.location.origin}/api/shares/${encodeURIComponent(shareId)}/file?path=${encodeURIComponent(relPath)}`;
+                await navigator.clipboard.writeText(link);
+                toast.success("تم نسخ الرابط المباشر");
+              } catch {}
+            }}
+          >
+            <LinkIcon className="size-4" />
+            نسخ الرابط المباشر
+          </DropdownMenuItem>
+        )}
+        {onProperties && (
+          <DropdownMenuItem onClick={onProperties}>
+            <Info className="size-4" />
+            الخصائص والتفاصيل
+          </DropdownMenuItem>
+        )}
         {writable && (
           <>
             <DropdownMenuSeparator />

@@ -64,3 +64,11 @@ export function mediaSrcSync(shareId: string, relPath: string, token: string): s
   const base = `/api/shares/${shareId}/file?path=${encodeURIComponent(relPath)}`;
   return token ? `${base}&t=${token}` : base;
 }
+
+/** Direct authenticated streaming download URL (attachment header for fast native download). */
+export async function downloadSrc(shareId: string, relPath: string): Promise<string> {
+  const base = `/api/shares/${shareId}/download?path=${encodeURIComponent(relPath)}`;
+  const t = await getMediaToken(shareId);
+  return t ? `${base}&t=${t}` : base;
+}
+

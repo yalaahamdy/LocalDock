@@ -32,7 +32,16 @@ import {
   Loader2,
   ShieldOff,
   Wifi,
+  Pencil,
 } from "lucide-react";
+import {
+  Dialog,
+  DialogContent,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
+import { Input } from "@/components/ui/input";
 import { toast } from "sonner";
 import type { Device } from "@/lib/localdock/types";
 
@@ -100,6 +109,7 @@ export function AddDeviceDialog({
       qrUrl={qrUrl ?? "/api/qr?text=loading"}
       link={claimUrl}
       expiresInSec={expired ? 0 : remaining}
+      onRefresh={start}
     />
   );
 }
@@ -113,6 +123,9 @@ export function DevicesView({ onPairSuccess }: { onPairSuccess?: () => void }) {
   const [addOpen, setAddOpen] = useState(false);
   const [revokeTarget, setRevokeTarget] = useState<(Device & { online: boolean }) | null>(null);
   const [revoking, setRevoking] = useState(false);
+  const [renameTarget, setRenameTarget] = useState<Device | null>(null);
+  const [renameName, setRenameName] = useState("");
+  const [renaming, setRenaming] = useState(false);
   const [manualCode, setManualCode] = useState("");
 
   const claim = async () => {
@@ -135,6 +148,21 @@ export function DevicesView({ onPairSuccess }: { onPairSuccess?: () => void }) {
       onPairSuccess?.();
     } catch (e) {
       toast.error(apiErrorMessage(e));
+    }
+  };
+
+  const saveDeviceName = async () => {
+    if (!renameTarget || !renameName.trim()) return;
+    setRenaming(true);
+    try {
+      await Api.updateDevice(renameTarget.id, renameName.trim());
+      toast.success("تم تحديث اسم الجهاز");
+      setRenameTarget(null);
+      refresh.refreshDevices();
+    } catch (e) {
+      toast.error(apiErrorMessage(e));
+    } finally {
+      setRenaming(false);
     }
   };
 
@@ -171,23 +199,32 @@ export function DevicesView({ onPairSuccess }: { onPairSuccess?: () => void }) {
       </div>
 
       {/* Pair via code (for devices without a camera) */}
-      <div className="flex flex-wrap items-center gap-2 rounded-2xl border border-border/70 bg-card p-3.5 shadow-card">
-        <ScanLine className="size-4 text-muted-foreground" />
-        <p className="text-xs text-muted-foreground">
-          {t.devicesView.cameraHint}
-        </p>
-        <input
-          value={manualCode}
-          onChange={(e) => setManualCode(e.target.value.toUpperCase())}
-          placeholder={t.devicesView.codePlaceholder}
-          maxLength={6}
-          dir="ltr"
-          className="w-24 rounded-xl border border-border bg-background px-3 py-1.5 text-center font-mono text-sm font-bold uppercase tracking-[0.25em]"
-          aria-label={t.devicesView.codeAria}
-        />
-        <Button size="sm" variant="outline" className="rounded-xl" onClick={claim} disabled={!manualCode.trim()}>
-          {t.devicesView.pair}
-        </Button>
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 rounded-2xl border border-border/70 bg-card p-3.5 shadow-card">
+        <div className="flex items-center gap-2 min-w-0 flex-1">
+          <ScanLine className="size-4 shrink-0 text-muted-foreground" />
+          <p className="text-xs text-muted-foreground">
+            {t.devicesView.cameraHint}
+          </p>
+        </div>
+        <div className="flex items-center gap-2 shrink-0">
+          <input
+            value={manualCode}
+            onChange={(e) => setManualCode(e.target.value.toUpperCase())}
+            onKeyDown={(e) => {
+              if (e.key === "Enter" && manualCode.trim()) {
+                void claim();
+              }
+            }}
+            placeholder={t.devicesView.codePlaceholder}
+            maxLength={6}
+            dir="ltr"
+            className="w-24 rounded-xl border border-border bg-background px-3 py-1.5 text-center font-mono text-sm font-bold uppercase tracking-[0.25em]"
+            aria-label={t.devicesView.codeAria}
+          />
+          <Button size="sm" variant="outline" className="rounded-xl" onClick={claim} disabled={!manualCode.trim()}>
+            {t.devicesView.pair}
+          </Button>
+        </div>
       </div>
 
       {devices.isLoading ? (
@@ -233,15 +270,31 @@ export function DevicesView({ onPairSuccess }: { onPairSuccess?: () => void }) {
                     <span>{t.devicesView.pairedAgo(timeAgo(device.pairedAt))}</span>
                   </p>
                 </div>
-                <Button
-                  size="sm"
-                  variant="ghost"
-                  className="rounded-xl text-muted-foreground hover:bg-destructive/10 hover:text-destructive"
-                  onClick={() => setRevokeTarget(device)}
-                >
-                  <ShieldOff className="size-4" />
-                  {t.devicesView.revoke}
-                </Button>
+                <div className="flex items-center gap-1">
+                  <Button
+                    size="sm"
+                    variant="ghost"
+                    className="rounded-xl text-muted-foreground hover:bg-muted"
+                    onClick={() => {
+                      setRenameTarget(device);
+                      setRenameName(device.name);
+                    }}
+                    title="تعديل اسم الجهاز"
+                  >
+                    <Pencil className="size-4" />
+                  </Button>
+                  <Button
+                    size="sm"
+                    variant="ghost"
+                    className="rounded-xl text-muted-foreground hover:bg-destructive/10 hover:text-destructive px-2 sm:px-3"
+                    onClick={() => setRevokeTarget(device)}
+                    title={t.devicesView.revoke}
+                    aria-label={t.devicesView.revoke}
+                  >
+                    <ShieldOff className="size-4 shrink-0" />
+                    <span className="hidden sm:inline ms-1">{t.devicesView.revoke}</span>
+                  </Button>
+                </div>
               </div>
             );
           })}
@@ -249,6 +302,34 @@ export function DevicesView({ onPairSuccess }: { onPairSuccess?: () => void }) {
       )}
 
       <AddDeviceDialog open={addOpen} onOpenChange={setAddOpen} />
+
+      {/* Rename dialog */}
+      <Dialog open={!!renameTarget} onOpenChange={(v) => !v && setRenameTarget(null)}>
+        <DialogContent className="sm:max-w-sm">
+          <DialogHeader>
+            <DialogTitle>إعادة تسمية الجهاز</DialogTitle>
+          </DialogHeader>
+          <div className="py-2">
+            <Input
+              value={renameName}
+              onChange={(e) => setRenameName(e.target.value)}
+              onKeyDown={(e) => e.key === "Enter" && void saveDeviceName()}
+              placeholder="اسم الجهاز الجديد"
+              className="rounded-xl"
+              autoFocus
+            />
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setRenameTarget(null)}>
+              {t.common.cancel}
+            </Button>
+            <Button onClick={() => void saveDeviceName()} disabled={renaming || !renameName.trim()}>
+              {renaming ? <Loader2 className="size-4 animate-spin" /> : <Pencil className="size-4" />}
+              حفظ
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
 
       <AlertDialog open={!!revokeTarget} onOpenChange={(v) => !v && setRevokeTarget(null)}>
         <AlertDialogContent>

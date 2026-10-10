@@ -84,7 +84,7 @@ export async function searchDir(
           const rel = path.relative(rootAbs, abs).replace(/\\/g, "/");
           results.push(
             stat.isDirectory()
-              ? { name: dirent.name, kind: "dir", size: 0, modifiedAt: stat.mtimeMs, category: "other" }
+              ? { name: dirent.name, kind: "dir", size: 0, modifiedAt: stat.mtimeMs, category: "other", relPath: rel }
               : {
                   name: dirent.name,
                   kind: "file",
@@ -92,9 +92,9 @@ export async function searchDir(
                   modifiedAt: stat.mtimeMs,
                   mimeType: mimeOf(dirent.name),
                   category: categoryOf(dirent.name),
+                  relPath: rel,
                 }
           );
-          void rel;
         } catch {
           /* ignore */
         }
