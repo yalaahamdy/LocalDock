@@ -274,6 +274,26 @@ body {
   gap: 8px;
 }
 
+/* Update Banner */
+.update-banner {
+  border: 1px solid rgba(20, 184, 166, 0.5);
+  background: rgba(20, 184, 166, 0.12);
+  color: var(--text);
+  border-radius: 14px;
+  padding: 10px 14px;
+  font-size: 0.85rem;
+  margin: 10px 16px;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.2);
+}
+.update-banner:hover {
+  background: rgba(20, 184, 166, 0.2);
+}
+
 /* Notice */
 .notice {
   border: 1px solid rgba(248, 113, 113, 0.35);

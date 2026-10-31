@@ -9,6 +9,9 @@ import { useSystem, useRefresh } from "./data-hooks";
 import { setLanIp } from "@/lib/localdock/client/lan";
 import { useTransfers, selectActiveCount } from "@/lib/localdock/client/transfer-engine";
 import { StatusDot, LogoMark } from "./primitives";
+import { checkForUpdates, type UpdateInfo } from "@/lib/localdock/client/updater";
+import { UpdateModal } from "./update-modal";
+import { Sparkles } from "lucide-react";
 import { TransferDock } from "./transfer-dock";
 import { DashboardView } from "./views/dashboard";
 import { SharesView } from "./views/shares";
@@ -72,6 +75,29 @@ export function AppShell({ onPairSuccess }: { onPairSuccess?: () => void }) {
     .reduce((acc, i) => acc + i.speedBps, 0);
   const { theme, setTheme } = useTheme();
   const [mobileNavOpen, setMobileNavOpen] = useState(false);
+  const [availableUpdate, setAvailableUpdate] = useState<UpdateInfo | null>(null);
+  const [updateModalOpen, setUpdateModalOpen] = useState(false);
+
+  // Background auto-check for updates from GitHub releases
+  useEffect(() => {
+    let cancelled = false;
+    const timer = setTimeout(async () => {
+      try {
+        const curVer = (system.data as { version?: string })?.version ?? "1.2.0";
+        const update = await checkForUpdates(curVer);
+        if (!cancelled && update && update.hasUpdate) {
+          setAvailableUpdate(update);
+        }
+      } catch {
+        /* quiet background check */
+      }
+    }, 3500);
+
+    return () => {
+      cancelled = true;
+      clearTimeout(timer);
+    };
+  }, [system.data]);
   // hydration-safe "mounted" flag without setState-in-effect
   const mounted = useSyncExternalStore(
     () => () => undefined,
@@ -197,7 +223,18 @@ export function AppShell({ onPairSuccess }: { onPairSuccess?: () => void }) {
               </h1>
             </div>
             <div className="ms-auto flex items-center gap-2">
-              {system.isLoading ? (
+              {availableUpdate && (
+              <Button
+                size="icon"
+                variant="outline"
+                className="size-8 shrink-0 rounded-lg border-primary/40 bg-primary/10 text-primary animate-pulse"
+                onClick={() => setUpdateModalOpen(true)}
+                title={`تحديث متوفر (v${availableUpdate.latestVersion})`}
+              >
+                <Sparkles className="size-4 text-primary" />
+              </Button>
+            )}
+            {system.isLoading ? (
                 <Skeleton className="h-8 w-36 rounded-full" />
               ) : (
                 <div className="flex items-center gap-2">
@@ -217,6 +254,17 @@ export function AppShell({ onPairSuccess }: { onPairSuccess?: () => void }) {
                     label={t.status.shares(system.data?.sharesCount ?? 0)}
                   />
                 </div>
+              )}
+              {availableUpdate && (
+                <Button
+                  size="sm"
+                  variant="outline"
+                  className="h-8 rounded-full border-primary/40 bg-primary/10 text-primary hover:bg-primary/20 text-xs font-semibold gap-1.5 animate-pulse"
+                  onClick={() => setUpdateModalOpen(true)}
+                >
+                  <Sparkles className="size-3.5 text-primary" />
+                  <span>تحديث متوفر (v{availableUpdate.latestVersion})</span>
+                </Button>
               )}
               <LanguageMenu locale={locale} setLocale={setLocale} ariaLabel={t.settings.languageTitle} />
             </div>
@@ -386,6 +434,11 @@ export function AppShell({ onPairSuccess }: { onPairSuccess?: () => void }) {
         </SheetContent>
       </Sheet>
 
+      <UpdateModal
+        update={availableUpdate}
+        open={updateModalOpen}
+        onOpenChange={setUpdateModalOpen}
+      />
       <TransferDock />
     </div>
   );

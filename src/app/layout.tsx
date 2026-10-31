@@ -4,9 +4,6 @@ import {
   Geist,
   Geist_Mono,
   Inter,
-  Noto_Sans_SC,
-  Noto_Sans_JP,
-  Noto_Sans_Devanagari,
 } from "next/font/google";
 import { ThemeProvider } from "next-themes";
 import "./globals.css";
@@ -41,27 +38,10 @@ const inter = Inter({
   display: "swap",
 });
 
-// CJK companions — Noto Sans is the professional UI standard for both.
-// Self-hosted + unicode-range sliced by next/font: browsers only download
-// the glyph slices a page actually renders.
-const notoSc = Noto_Sans_SC({
-  variable: "--font-noto-sc",
-  weight: ["400", "500", "700"],
-  display: "swap",
-});
-
-const notoJp = Noto_Sans_JP({
-  variable: "--font-noto-jp",
-  weight: ["400", "500", "700"],
-  display: "swap",
-});
-
-// Hindi companion — full Devanagari coverage with Latin included.
-const notoDeva = Noto_Sans_Devanagari({
-  variable: "--font-noto-deva",
-  weight: ["400", "500", "700"],
-  display: "swap",
-});
+// CJK & Hindi font variables mapping directly to high-quality system font fallbacks
+const notoSc = { variable: "--font-noto-sc" };
+const notoJp = { variable: "--font-noto-jp" };
+const notoDeva = { variable: "--font-noto-deva" };
 
 export const metadata: Metadata = {
   title: "LocalDock — Your Personal Local Cloud",

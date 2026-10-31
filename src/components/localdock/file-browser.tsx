@@ -461,7 +461,7 @@ export function FileBrowser({
       !("showSaveFilePicker" in window) &&
       !((window as unknown as { LocalDockAndroid?: unknown }).LocalDockAndroid);
 
-    if (isMobileBrowser && entry.size > 25 * 1024 * 1024) {
+    if (isMobileBrowser) {
       void downloadSrc(shareId, rel).then((directUrl) => {
         const a = document.createElement("a");
         a.href = directUrl;

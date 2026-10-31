@@ -17,6 +17,7 @@
 import { create } from "zustand";
 import type { TransferItem, TransferStatus } from "../types";
 import { Api, getOwnerKey, getDeviceToken, makeApiError } from "./api";
+import { downloadSrc } from "./media";
 import { activeDictionary } from "../i18n/runtime";
 
 /** Localized transfer-error strings (read at error-creation time). */
@@ -817,7 +818,13 @@ class TransferEngine {
         };
       }).LocalDockAndroid?.downloadDirect === "function"
     ) {
-      const fullUrl = new URL(downloadUrlOf(item), window.location.origin).href;
+      let fullUrl = "";
+      try {
+        const directRel = await downloadSrc(item.shareId, item.path);
+        fullUrl = new URL(directRel, window.location.origin).href;
+      } catch {
+        fullUrl = new URL(downloadUrlOf(item), window.location.origin).href;
+      }
       (window as unknown as {
         LocalDockAndroid: {
           downloadDirect: (u: string, n: string, s: number, d: string, o: string) => void;

@@ -645,6 +645,47 @@ function VideoPlayer({
     return () => v.removeEventListener("timeupdate", onTime);
   }, [storageKey]);
 
+  // Keep screen awake while video is playing (prevents screen blackout / sleep)
+  useEffect(() => {
+    const v = videoRef.current;
+    if (!v) return;
+    let wakeLockSentinel: unknown = null;
+
+    const acquireLock = async () => {
+      try {
+        if ("wakeLock" in navigator && !v.paused && !v.ended) {
+          wakeLockSentinel = await (navigator as unknown as { wakeLock: { request: (type: string) => Promise<unknown> } }).wakeLock.request("screen");
+        }
+      } catch {}
+    };
+
+    const releaseLock = async () => {
+      if (wakeLockSentinel && typeof (wakeLockSentinel as { release?: () => Promise<void> }).release === "function") {
+        try {
+          await (wakeLockSentinel as { release: () => Promise<void> }).release();
+        } catch {}
+        wakeLockSentinel = null;
+      }
+    };
+
+    const onPlay = () => void acquireLock();
+    const onPause = () => void releaseLock();
+    const onEnded = () => void releaseLock();
+
+    v.addEventListener("play", onPlay);
+    v.addEventListener("pause", onPause);
+    v.addEventListener("ended", onEnded);
+
+    if (!v.paused) void acquireLock();
+
+    return () => {
+      v.removeEventListener("play", onPlay);
+      v.removeEventListener("pause", onPause);
+      v.removeEventListener("ended", onEnded);
+      void releaseLock();
+    };
+  }, [src]);
+
   const toggleRate = () => {
     const next = (rateIdx + 1) % rates.length;
     setRateIdx(next);
@@ -664,24 +705,13 @@ function VideoPlayer({
   };
 
   const toggleVideoFullscreen = () => {
-    const v = videoRef.current;
-    if (!v) {
-      toggleFullscreen?.();
-      return;
-    }
-    if (!document.fullscreenElement && (v as unknown as { webkitEnterFullscreen?: () => void }).webkitEnterFullscreen) {
-      try {
-        (v as unknown as { webkitEnterFullscreen: () => void }).webkitEnterFullscreen();
-        return;
-      } catch {}
-    }
     toggleFullscreen?.();
   };
 
   return (
     <div
       className={cn(
-        "relative flex h-full w-full items-center justify-center transition-all duration-200",
+        "relative flex h-full w-full items-center justify-center",
         isFullscreen ? "p-0" : "p-3 sm:p-6"
       )}
     >
@@ -693,7 +723,7 @@ function VideoPlayer({
         autoPlay
         playsInline
         className={cn(
-          "max-h-full max-w-full bg-black transition-all duration-200",
+          "max-h-full max-w-full bg-black",
           isFullscreen ? "h-full w-full rounded-none" : "rounded-xl shadow-pop",
           fitMode === "cover" ? "object-cover" : "object-contain"
         )}

@@ -34,9 +34,13 @@ import {
   Wifi,
   Info,
   Trash2,
+  Sparkles,
+  ArrowUpCircle,
 } from "lucide-react";
 import { toast } from "sonner";
 import type { LocalDockSettings } from "@/lib/localdock/types";
+import { checkForUpdates, type UpdateInfo } from "@/lib/localdock/client/updater";
+import { UpdateModal } from "../update-modal";
 
 export function SettingsView() {
   const { t, locale, setLocale } = useI18n();
@@ -52,6 +56,27 @@ export function SettingsView() {
   const [name, setName] = useState("");
   const [saving, setSaving] = useState(false);
   const [clearingLog, setClearingLog] = useState(false);
+  const [checkingUpdate, setCheckingUpdate] = useState(false);
+  const [updateInfo, setUpdateInfo] = useState<UpdateInfo | null>(null);
+  const [updateModalOpen, setUpdateModalOpen] = useState(false);
+
+  const handleCheckUpdate = async () => {
+    setCheckingUpdate(true);
+    try {
+      const currentVer = (system.data as { version?: string })?.version ?? "1.2.0";
+      const info = await checkForUpdates(currentVer);
+      if (info && info.hasUpdate) {
+        setUpdateInfo(info);
+        setUpdateModalOpen(true);
+      } else {
+        toast.success(`أنت تستخدم أحدث إصدار من LocalDock (${currentVer})`);
+      }
+    } catch {
+      toast.error("فشل الاتصال بخدمة التحديثات");
+    } finally {
+      setCheckingUpdate(false);
+    }
+  };
 
   const guestSharesCount = shares.data?.filter((s) => s.guestEnabled).length ?? 0;
 
@@ -347,7 +372,26 @@ export function SettingsView() {
               <StatusRow label={t.settings.transfers} value={formatSpeed(system.data.transferSpeedBps)} />
               <StatusRow label={t.settings.trustedDevices} value={t.settings.devicesOnlineTrusted(system.data.devicesOnline, system.data.devicesTrusted)} />
               <StatusRow label={t.settings.platform} value={system.data.platform} />
-              <StatusRow label="الإصدار" value={(system.data as { version?: string })?.version ?? "1.0.0"} />
+              <div className="flex items-center justify-between rounded-xl border border-border px-3.5 py-2.5">
+                <span className="text-xs font-semibold text-muted-foreground">الإصدار والتحديثات</span>
+                <div className="flex items-center gap-2">
+                  <span className="text-sm font-bold">{(system.data as { version?: string })?.version ?? "1.2.0"}</span>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    className="h-7 text-xs rounded-lg gap-1.5"
+                    disabled={checkingUpdate}
+                    onClick={() => void handleCheckUpdate()}
+                  >
+                    {checkingUpdate ? (
+                      <Loader2 className="size-3 animate-spin" />
+                    ) : (
+                      <Sparkles className="size-3 text-primary" />
+                    )}
+                    فحص التحديثات
+                  </Button>
+                </div>
+              </div>
             </div>
           )}
         </SectionCard>
@@ -484,6 +528,11 @@ export function SettingsView() {
           )}
         </SectionCard>
       </TabsContent>
+    <UpdateModal
+        open={updateModalOpen}
+        onOpenChange={setUpdateModalOpen}
+        update={updateInfo}
+      />
     </Tabs>
   );
 }

@@ -1277,3 +1277,49 @@ lang = detectLang();
 applyLang();
 wire();
 setTimeout(() => scan(), 150);
+setTimeout(() => checkAppUpdates(), 1200);
+
+
+/* ─────────────────────────── Auto-Updater ──────────────────────────── */
+
+const CURRENT_APP_VERSION = "1.2.0";
+
+async function checkAppUpdates() {
+  try {
+    const res = await fetch("https://api.github.com/repos/yalaahamdy/LocalDock/releases/latest", {
+      headers: { Accept: "application/vnd.github.v3+json" }
+    });
+    if (!res.ok) return;
+    const data = await res.json();
+    const tagName = String(data.tag_name || "").replace(/^v/, "").trim();
+    if (!tagName) return;
+
+    const p1 = tagName.split(".").map(n => parseInt(n, 10) || 0);
+    const p2 = CURRENT_APP_VERSION.split(".").map(n => parseInt(n, 10) || 0);
+    let hasNew = false;
+    for (let i = 0; i < Math.max(p1.length, p2.length); i++) {
+      if ((p1[i] || 0) > (p2[i] || 0)) { hasNew = true; break; }
+      if ((p1[i] || 0) < (p2[i] || 0)) break;
+    }
+
+    if (hasNew) {
+      const assets = Array.isArray(data.assets) ? data.assets : [];
+      const apk = assets.find(a => String(a.name || "").toLowerCase().endsWith(".apk"));
+      const banner = $("#updateBanner");
+      if (banner && apk) {
+        banner.innerHTML = `<span style="display:flex;align-items:center;gap:6px;">✨ <span><strong>تحديث متوفر:</strong> v${tagName}</span></span><button type="button" class="btn primary compact" style="margin:0;padding:5px 12px;font-size:0.75rem;border-radius:10px;">تحديث وتثبيت</button>`;
+        banner.classList.remove("hidden");
+        banner.onclick = () => {
+          if (window.LocalDockAndroid && typeof window.LocalDockAndroid.downloadDirect === "function") {
+            window.LocalDockAndroid.downloadDirect(apk.browser_download_url, apk.name, apk.size || -1, "", "");
+            toast("جارٍ تنزيل التحديث... سيتم فتح التثبيت فور الانتهاء.");
+          } else {
+            window.open(apk.browser_download_url, "_blank");
+          }
+        };
+      }
+    }
+  } catch (err) {
+    /* non-blocking background check */
+  }
+}
