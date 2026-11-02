@@ -130,15 +130,28 @@ const MIME: Record<string, string> = {
   ".png": "image/png", ".jpg": "image/jpeg", ".jpeg": "image/jpeg",
   ".gif": "image/gif", ".webp": "image/webp", ".svg": "image/svg+xml",
   ".bmp": "image/bmp", ".ico": "image/x-icon", ".avif": "image/avif",
+  ".heic": "image/heic", ".heif": "image/heif", ".jfif": "image/jpeg",
+  ".tif": "image/tiff", ".tiff": "image/tiff",
   // video
   ".mp4": "video/mp4", ".webm": "video/webm", ".mov": "video/quicktime",
   ".mkv": "video/x-matroska", ".avi": "video/x-msvideo", ".m4v": "video/x-m4v",
+  ".3gp": "video/3gpp", ".ogv": "video/ogg", ".flv": "video/x-flv",
+  ".wmv": "video/x-ms-wmv", ".mpeg": "video/mpeg", ".mpg": "video/mpeg",
   // audio
   ".mp3": "audio/mpeg", ".wav": "audio/wav", ".ogg": "audio/ogg",
-  ".m4a": "audio/mp4", ".flac": "audio/flac",
+  ".m4a": "audio/mp4", ".flac": "audio/flac", ".aac": "audio/aac",
+  ".opus": "audio/opus", ".wma": "audio/x-ms-wma", ".amr": "audio/amr",
+  ".weba": "audio/webm",
   // docs
-  ".pdf": "application/pdf", ".txt": "text/plain", ".md": "text/markdown",
-  ".csv": "text/csv", ".json": "application/json", ".xml": "application/xml",
+  ".pdf": "application/pdf",
+  ".docx": "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+  ".doc": "application/msword",
+  ".rtf": "application/rtf",
+  ".odt": "application/vnd.oasis.opendocument.text",
+  ".txt": "text/plain; charset=utf-8", ".md": "text/markdown; charset=utf-8",
+  ".csv": "text/csv; charset=utf-8", ".tsv": "text/tab-separated-values; charset=utf-8",
+  ".srt": "text/plain; charset=utf-8", ".vtt": "text/vtt; charset=utf-8",
+  ".json": "application/json; charset=utf-8", ".xml": "application/xml; charset=utf-8",
   ".html": "text/html; charset=utf-8", ".htm": "text/html; charset=utf-8",
   ".css": "text/css; charset=utf-8",
   ".js": "text/javascript; charset=utf-8", ".mjs": "text/javascript; charset=utf-8",
@@ -157,10 +170,20 @@ const MIME: Record<string, string> = {
 };
 
 const TEXTUAL = new Set([
-  ".txt", ".md", ".csv", ".json", ".xml", ".log", ".yml", ".yaml", ".ini",
-  ".env", ".ts", ".tsx", ".js", ".mjs", ".jsx", ".css", ".html", ".htm",
-  ".py", ".go", ".rs", ".java", ".kt", ".c", ".h", ".cpp", ".sh", ".sql",
-  ".toml", ".gitignore", ".license",
+  ".txt", ".md", ".markdown", ".csv", ".tsv", ".srt", ".vtt", ".sub",
+  ".docx", ".doc", ".rtf", ".odt",
+  ".json", ".jsonl", ".xml", ".log", ".yml", ".yaml", ".ini", ".conf", ".cfg",
+  ".env", ".ts", ".tsx", ".js", ".mjs", ".cjs", ".jsx", ".css", ".scss", ".less",
+  ".html", ".htm", ".py", ".go", ".rs", ".java", ".kt", ".kts", ".c", ".h",
+  ".cpp", ".hpp", ".cs", ".php", ".rb", ".swift", ".dart", ".lua", ".r",
+  ".sh", ".bash", ".bat", ".ps1", ".sql", ".toml", ".gitignore", ".license",
+]);
+
+const CODE_EXTS = new Set([
+  ".html", ".htm", ".css", ".scss", ".less", ".js", ".mjs", ".cjs", ".jsx",
+  ".ts", ".tsx", ".py", ".go", ".rs", ".java", ".kt", ".kts", ".c", ".h",
+  ".cpp", ".hpp", ".cs", ".php", ".rb", ".swift", ".dart", ".lua", ".sh",
+  ".bash", ".bat", ".ps1", ".sql",
 ]);
 
 export function extOf(name: string): string {
@@ -174,13 +197,13 @@ export function mimeOf(name: string): string {
 
 export function categoryOf(name: string): FileCategory {
   const ext = extOf(name);
-  if ([".png", ".jpg", ".jpeg", ".gif", ".webp", ".svg", ".bmp", ".ico", ".avif"].includes(ext)) return "image";
-  if ([".mp4", ".webm", ".mov", ".mkv", ".avi", ".m4v"].includes(ext)) return "video";
-  if ([".mp3", ".wav", ".ogg", ".m4a", ".flac"].includes(ext)) return "audio";
+  if ([".png", ".jpg", ".jpeg", ".gif", ".webp", ".svg", ".bmp", ".ico", ".avif", ".heic", ".heif", ".jfif", ".tif", ".tiff"].includes(ext)) return "image";
+  if ([".mp4", ".webm", ".mov", ".mkv", ".avi", ".m4v", ".3gp", ".ogv", ".flv", ".wmv", ".mpeg", ".mpg"].includes(ext)) return "video";
+  if ([".mp3", ".wav", ".ogg", ".m4a", ".flac", ".aac", ".opus", ".wma", ".amr", ".weba"].includes(ext)) return "audio";
   if (ext === ".pdf") return "pdf";
   if ([".zip", ".rar", ".7z", ".tar", ".gz", ".iso", ".dmg"].includes(ext)) return "archive";
   if (ext === ".apk") return "apk";
-  if (TEXTUAL.has(ext)) return ext === ".html" || ext === ".htm" || ext === ".css" || ext === ".js" || ext === ".mjs" || ext === ".ts" || ext === ".tsx" ? "code" : "text";
+  if (TEXTUAL.has(ext)) return CODE_EXTS.has(ext) ? "code" : "text";
   return "other";
 }
 

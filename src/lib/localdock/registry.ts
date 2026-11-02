@@ -25,7 +25,7 @@ import type {
   Website,
 } from "./types";
 
-export const VERSION = "1.2.0";
+export const VERSION = "1.3.0";
 export const STARTED_AT = Date.now();
 
 /* ------------------------------------------------------------------ */

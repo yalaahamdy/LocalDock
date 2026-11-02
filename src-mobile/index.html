@@ -10,6 +10,7 @@
       href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='14' fill='%230f766e'/%3E%3Cpath d='M32 12v26M32 38l-9-9M32 38l9-9' stroke='%2399f6e4' stroke-width='5' stroke-linecap='round' stroke-linejoin='round' fill='none'/%3E%3Cpath d='M16 48h32' stroke='%2399f6e4' stroke-width='5' stroke-linecap='round'/%3E%3C/svg%3E"
     />
     <link rel="stylesheet" href="styles.css" />
+    <link rel="stylesheet" href="studio.css" />
   </head>
   <body>
     <div class="bg" aria-hidden="true"></div>
@@ -36,6 +37,18 @@
     <!-- VIEW: DISCOVER (default) -->
     <main id="view-discover" class="view active">
       <section id="notice" class="notice hidden"></section>
+
+      <!-- LOCAL MEDIA & DOCUMENT STUDIO HERO CARD -->
+      <section id="openLocalStudioCard" class="studio-launch-card" role="button" tabindex="0">
+        <div class="studio-launch-info">
+          <div class="studio-launch-icon">🎬</div>
+          <div class="studio-launch-text">
+            <h3>مشغل وعارض الملفات المحلية الاحترافي</h3>
+            <p>تشغيل الفيديوهات، الصوتيات، الصور، PDF، Word والنصوص من هاتفك مباشرةً</p>
+          </div>
+        </div>
+        <span style="font-size:18px;color:#2dd4bf;font-weight:bold;">◀</span>
+      </section>
 
       <!-- Scan status row -->
       <section class="scan-row">
@@ -200,11 +213,78 @@
 
     <footer>
       <p data-i="footerHint"></p>
-      <p class="muted small"><span data-i="footerCompanion"></span> · <span id="ver">1.0.1</span></p>
+      <p class="muted small"><span data-i="footerCompanion"></span> · <span id="ver">1.3.0</span></p>
     </footer>
+
+    <!-- STANDALONE OFFLINE PRO MEDIA & DOCUMENT STUDIO OVERLAY -->
+    <div id="studioOverlay" class="studio-overlay hidden" dir="rtl">
+      <div class="studio-top">
+        <div class="studio-top-title">
+          <h2>🎬 استوديو ومشغل ملفات الهاتف الاحترافي</h2>
+          <p>الفيديوهات · الصوتيات · الصور · PDF · Word · الجداول والنصوص</p>
+        </div>
+        <button id="closeStudioBtn" class="btn icon" type="button">✕</button>
+      </div>
+
+      <div class="studio-toolbar">
+        <div style="display:flex;gap:8px;flex-wrap:wrap;">
+          <button id="studioPickFilesBtn" class="btn primary compact" type="button">
+            ＋ فتح ملفات من الهاتف
+          </button>
+          <button id="studioClearBtn" class="btn ghost compact" type="button">
+            🗑 مسح القائمة
+          </button>
+          <input
+            id="studioFileInput"
+            type="file"
+            multiple
+            accept="video/*,audio/*,image/*,.pdf,.docx,.doc,.rtf,.odt,.csv,.tsv,.txt,.md,.json,.xml,.srt,.vtt,.log,.html,.js,.py"
+            class="hidden-input"
+          />
+        </div>
+        <input
+          id="studioSearchInput"
+          type="text"
+          placeholder="بحث في الملفات..."
+          class="field"
+          style="width:170px;padding:6px 10px;font-size:12px;"
+        />
+      </div>
+
+      <div class="studio-tabs">
+        <button type="button" class="studio-tab active" data-cat="all">الكل</button>
+        <button type="button" class="studio-tab" data-cat="video">🎬 فيديوهات</button>
+        <button type="button" class="studio-tab" data-cat="audio">🎵 صوتيات</button>
+        <button type="button" class="studio-tab" data-cat="image">🖼️ صور</button>
+        <button type="button" class="studio-tab" data-cat="doc">📄 مستندات (PDF / Word / TXT)</button>
+      </div>
+
+      <div id="studioBody" class="studio-body"></div>
+    </div>
+
+    <!-- ACTIVE FULLSCREEN PRO PLAYER MODAL -->
+    <div id="studioPlayerModal" class="studio-player-modal hidden" dir="rtl">
+      <div class="sp-header">
+        <div style="min-width:0;flex:1;">
+          <div id="spTitle" style="font-size:13px;font-weight:700;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;" dir="auto"></div>
+          <div id="spMeta" style="font-size:11px;color:#94a3b8;"></div>
+        </div>
+        <div style="display:flex;gap:6px;">
+          <button id="spPrevBtn" class="sp-btn" type="button" title="السابق">⏮</button>
+          <button id="spNextBtn" class="sp-btn" type="button" title="التالي">⏭</button>
+          <button id="spCloseBtn" class="sp-btn" type="button" style="background:rgba(244,63,94,0.25);border-color:rgba(244,63,94,0.4);">✕</button>
+        </div>
+      </div>
+      <div id="spStage" class="sp-stage">
+        <div id="spHud" class="sp-hud hidden"></div>
+      </div>
+      <div id="spControls" class="sp-controls"></div>
+    </div>
 
     <div id="toast" class="toast hidden" role="status"></div>
     <script src="jsqr.js"></script>
+    <script src="pdfjs/mammoth.browser.min.js"></script>
     <script src="app.js"></script>
+    <script src="studio.js"></script>
   </body>
 </html>

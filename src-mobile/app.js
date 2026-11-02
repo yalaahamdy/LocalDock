@@ -1282,7 +1282,7 @@ setTimeout(() => checkAppUpdates(), 1200);
 
 /* ─────────────────────────── Auto-Updater ──────────────────────────── */
 
-const CURRENT_APP_VERSION = "1.2.0";
+const CURRENT_APP_VERSION = "1.3.0";
 
 async function checkAppUpdates() {
   try {

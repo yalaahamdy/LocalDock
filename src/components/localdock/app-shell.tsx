@@ -11,7 +11,8 @@ import { useTransfers, selectActiveCount } from "@/lib/localdock/client/transfer
 import { StatusDot, LogoMark } from "./primitives";
 import { checkForUpdates, type UpdateInfo } from "@/lib/localdock/client/updater";
 import { UpdateModal } from "./update-modal";
-import { Sparkles } from "lucide-react";
+import { LocalDevicePlayerModal } from "./local-device-player";
+import { PlayCircle, Sparkles } from "lucide-react";
 import { TransferDock } from "./transfer-dock";
 import { DashboardView } from "./views/dashboard";
 import { SharesView } from "./views/shares";
@@ -77,13 +78,20 @@ export function AppShell({ onPairSuccess }: { onPairSuccess?: () => void }) {
   const [mobileNavOpen, setMobileNavOpen] = useState(false);
   const [availableUpdate, setAvailableUpdate] = useState<UpdateInfo | null>(null);
   const [updateModalOpen, setUpdateModalOpen] = useState(false);
+  const [localPlayerOpen, setLocalPlayerOpen] = useState(false);
+
+  useEffect(() => {
+    const onOpenLocal = () => setLocalPlayerOpen(true);
+    window.addEventListener("localdock:open-local-player", onOpenLocal);
+    return () => window.removeEventListener("localdock:open-local-player", onOpenLocal);
+  }, []);
 
   // Background auto-check for updates from GitHub releases
   useEffect(() => {
     let cancelled = false;
     const timer = setTimeout(async () => {
       try {
-        const curVer = (system.data as { version?: string })?.version ?? "1.2.0";
+        const curVer = (system.data as { version?: string })?.version ?? "1.3.0";
         const update = await checkForUpdates(curVer);
         if (!cancelled && update && update.hasUpdate) {
           setAvailableUpdate(update);
@@ -170,6 +178,19 @@ export function AppShell({ onPairSuccess }: { onPairSuccess?: () => void }) {
               </button>
             );
           })}
+
+          <div className="pt-2">
+            <button
+              type="button"
+              onClick={() => setLocalPlayerOpen(true)}
+              className="group flex w-full items-center gap-3 rounded-xl border border-primary/30 bg-primary/10 px-3 py-2.5 text-sm font-semibold text-primary transition-all hover:bg-primary/20"
+            >
+              <PlayCircle className="size-[18px] shrink-0 transition-transform group-hover:scale-110" />
+              <span className="flex-1 text-start">
+                {isRtl ? "مشغل الملفات المحلية" : "Local Media Studio"}
+              </span>
+            </button>
+          </div>
         </nav>
 
         <div className="border-t border-border/70 p-4">
@@ -223,6 +244,15 @@ export function AppShell({ onPairSuccess }: { onPairSuccess?: () => void }) {
               </h1>
             </div>
             <div className="ms-auto flex items-center gap-2">
+              <Button
+                size="sm"
+                variant="outline"
+                className="h-8 gap-1.5 rounded-full border-primary/30 bg-primary/10 text-xs font-semibold text-primary hover:bg-primary/20"
+                onClick={() => setLocalPlayerOpen(true)}
+              >
+                <PlayCircle className="size-3.5" />
+                <span>{isRtl ? "مشغل الملفات المحلية" : "Local Player"}</span>
+              </Button>
               {availableUpdate && (
               <Button
                 size="icon"
@@ -297,6 +327,16 @@ export function AppShell({ onPairSuccess }: { onPairSuccess?: () => void }) {
               </div>
             </div>
 
+            <Button
+              size="sm"
+              variant="outline"
+              className="h-7 shrink-0 gap-1 rounded-full border-primary/35 bg-primary/10 px-2.5 text-[11px] font-semibold text-primary hover:bg-primary/20"
+              onClick={() => setLocalPlayerOpen(true)}
+              title={isRtl ? "مشغل الملفات المحلية" : "Local Player"}
+            >
+              <PlayCircle className="size-3.5" />
+              <span>{isRtl ? "مشغل محلي" : "Player"}</span>
+            </Button>
             {system.isLoading ? (
               <Skeleton className="h-6 w-12 rounded-full" />
             ) : (
@@ -394,6 +434,22 @@ export function AppShell({ onPairSuccess }: { onPairSuccess?: () => void }) {
                 </button>
               );
             })}
+
+            <div className="pt-2">
+              <button
+                type="button"
+                onClick={() => {
+                  setMobileNavOpen(false);
+                  setLocalPlayerOpen(true);
+                }}
+                className="group flex w-full items-center gap-3 rounded-xl border border-primary/30 bg-primary/10 px-3 py-2.5 text-sm font-semibold text-primary transition-all hover:bg-primary/20 text-start"
+              >
+                <PlayCircle className="size-[18px] shrink-0" />
+                <span className="flex-1 truncate">
+                  {isRtl ? "مشغل الملفات المحلية الاحترافي" : "Local Media Studio"}
+                </span>
+              </button>
+            </div>
           </nav>
 
           {/* Mobile Drawer Footer Status */}
@@ -438,6 +494,10 @@ export function AppShell({ onPairSuccess }: { onPairSuccess?: () => void }) {
         update={availableUpdate}
         open={updateModalOpen}
         onOpenChange={setUpdateModalOpen}
+      />
+      <LocalDevicePlayerModal
+        open={localPlayerOpen}
+        onClose={() => setLocalPlayerOpen(false)}
       />
       <TransferDock />
     </div>
