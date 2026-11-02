@@ -6,6 +6,7 @@ import {
   listShares,
   logActivity,
   setShareStats,
+  isLoopbackRequest,
 } from "@/lib/localdock/registry";
 import { readJsonBody, requireAuth } from "@/lib/localdock/api-helpers";
 import { measureDir, resolveNativeFolder } from "@/lib/localdock/files";
@@ -21,15 +22,21 @@ export async function GET(req: Request) {
   const check = await requireAuth(req);
   if ("deny" in check) return check.deny;
   const allShares = listShares();
-  if (check.auth.kind === "owner") {
+
+  // Only the host console on loopback gets to view every share without restriction
+  if (check.auth.kind === "owner" && isLoopbackRequest(req)) {
     return jsonOk({ shares: allShares });
   }
+
+  // Any caller on the network (paired device) only sees shares it is explicitly authorized to view
   const deviceId = check.auth.device?.id;
-  const allowed = allShares.filter(
-    (s) =>
-      s.allowedDevices === "all" ||
-      (deviceId && Array.isArray(s.allowedDevices) && s.allowedDevices.includes(deviceId))
-  );
+  const allowed = allShares.filter((s) => {
+    if (s.allowedDevices === "all") return true;
+    if (Array.isArray(s.allowedDevices) && deviceId && s.allowedDevices.includes(deviceId)) {
+      return true;
+    }
+    return false;
+  });
   return jsonOk({ shares: allowed });
 }
 

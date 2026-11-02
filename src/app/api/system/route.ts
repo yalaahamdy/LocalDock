@@ -7,6 +7,7 @@ import {
   listShares,
   networkInterfaces,
   pickPrimaryLanIp,
+  isLoopbackRequest,
   VERSION,
   STARTED_AT,
 } from "@/lib/localdock/registry";
@@ -21,9 +22,14 @@ export async function GET(req: Request) {
   const check = await requireAuth(req);
   if ("deny" in check) return check.deny;
 
-  const isOwner = check.auth.kind === "owner";
+  const isLoopbackOwner = check.auth.kind === "owner" && isLoopbackRequest(req);
   const settings = getSettings();
-  const shares = listShares();
+  const allShares = listShares();
+  const devId = check.auth.device?.id;
+  const visibleShares = isLoopbackOwner
+    ? allShares
+    : allShares.filter((s) => s.allowedDevices === "all" || (Array.isArray(s.allowedDevices) && devId && s.allowedDevices.includes(devId)));
+
   const devices = listDevices();
   const now = Date.now();
   const storage = await diskUsage(HOME);
@@ -36,18 +42,18 @@ export async function GET(req: Request) {
     startedAt: STARTED_AT,
     uptimeSec: Math.floor((now - STARTED_AT) / 1000),
     devicesOnline: devices.filter((d) => now - d.lastSeenAt < 45_000).length,
-    devicesTrusted: devices.length,
-    sharesCount: shares.length,
-    sharedBytes: shares.reduce((acc, s) => acc + s.sizeBytes, 0),
+    devicesTrusted: isLoopbackOwner ? devices.length : 1,
+    sharesCount: visibleShares.length,
+    sharedBytes: visibleShares.reduce((acc, s) => acc + s.sizeBytes, 0),
     transferSpeedBps: currentSpeedBps(),
     activeTransfers: 0, // client-side value merges in the UI
-    platform: isOwner ? `${os.type()} ${os.release()}` : "LocalDock",
-    hostname: isOwner ? os.hostname() : "LocalDock Host",
-    network: isOwner ? networkInterfaces() : [],
+    platform: isLoopbackOwner ? `${os.type()} ${os.release()}` : "LocalDock",
+    hostname: isLoopbackOwner ? os.hostname() : "LocalDock Host",
+    network: isLoopbackOwner ? networkInterfaces() : [],
     /** Best-guess primary LAN IPv4 — kept fresh for share links / QR codes. */
     lanIp: pickPrimaryLanIp(),
     storage,
-    shareStorage: shares.map((s) => ({
+    shareStorage: visibleShares.map((s) => ({
       id: s.id,
       name: s.name,
       sizeBytes: s.sizeBytes,

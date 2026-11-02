@@ -333,7 +333,7 @@ export function SettingsView() {
               </p>
             </div>
             <Switch
-              checked={settings?.allowRemoteOwner ?? true}
+              checked={settings?.allowRemoteOwner ?? false}
               onCheckedChange={(v) => save({ allowRemoteOwner: v })}
             />
           </label>

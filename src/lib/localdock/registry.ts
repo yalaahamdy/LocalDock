@@ -104,7 +104,7 @@ export async function createShare(input: {
       rootPath: input.rootPath,
       createdAt: Date.now(),
       access: input.access ?? "read",
-      guestEnabled: input.guestEnabled ?? false,
+      guestEnabled: (input.allowedDevices && input.allowedDevices !== "all") ? false : (input.guestEnabled ?? false),
       allowedDevices: input.allowedDevices ?? "all",
       sizeBytes: 0,
       itemCount: 0,
@@ -133,6 +133,11 @@ export async function updateShare(
     }
     if (patch.rotateSlug) {
       next.slug = crypto.randomBytes(6).toString("hex");
+    }
+    // If share is locked to specific devices, forcibly disable guest access
+    if (next.allowedDevices && next.allowedDevices !== "all") {
+      next.guestEnabled = false;
+      next.guestExpiresAt = null;
     }
     shares[idx] = next;
     await persistShares(shares);

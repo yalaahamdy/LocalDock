@@ -16,13 +16,13 @@ export async function GET(req: Request) {
   const settings = getSettings();
   const lanIp = pickPrimaryLanIp();
   const isLoopback = isLoopbackRequest(req);
-  const allowOwner = isLoopback || !!settings.allowRemoteOwner;
-
   return jsonOk({
     version: VERSION,
     serverId: settings.serverId,
     serverName: settings.serverName,
-    ownerKey: allowOwner ? settings.ownerKey : "",
+    // The master ownerKey is exclusively returned to the local host machine (loopback).
+    // It is NEVER transmitted across the local network to remote devices or browsers.
+    ownerKey: isLoopback ? settings.ownerKey : "",
     onboarded: settings.onboarded,
     baseUrl: serverBaseUrlFrom(req),
     /** First non-loopback IPv4 — used to build QR & share links for other devices. */

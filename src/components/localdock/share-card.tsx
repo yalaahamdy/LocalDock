@@ -239,12 +239,13 @@ function ShareManageDialog({
         guestExpiresAt = Date.now() + 7 * 86400_000;
       }
 
+      const isCustomDevices = deviceMode === "custom";
       await Api.updateShare(share.id, {
         name: name.trim() || share.name,
         access,
-        guestEnabled: guest,
-        allowedDevices: deviceMode === "all" ? "all" : selected,
-        guestExpiresAt,
+        guestEnabled: isCustomDevices ? false : guest,
+        allowedDevices: isCustomDevices ? selected : "all",
+        guestExpiresAt: isCustomDevices ? null : guestExpiresAt,
         rotateSlug,
       });
       toast.success(t.shareCard.updatedToast);
@@ -328,8 +329,17 @@ function ShareManageDialog({
                 <div>
                   <p className="text-sm font-semibold">{t.shareCard.guestTitle}</p>
                   <p className="text-xs text-muted-foreground">{t.shareCard.guestDesc}</p>
+                  {deviceMode === "custom" && (
+                    <p className="text-[11px] font-medium text-amber-600 dark:text-amber-400 mt-1">
+                      ⚠️ وصول الضيوف معطّل تلقائياً لحماية المجلد لأنك اخترت أجهزة محددة فقط.
+                    </p>
+                  )}
                 </div>
-                <Switch checked={guest} onCheckedChange={setGuest} />
+                <Switch
+                  checked={deviceMode === "custom" ? false : guest}
+                  disabled={deviceMode === "custom"}
+                  onCheckedChange={setGuest}
+                />
               </div>
 
               {guest && (
@@ -381,7 +391,13 @@ function ShareManageDialog({
               <Label className="text-xs font-semibold">{t.shareCard.deviceAccess}</Label>
               <RadioGroup
                 value={deviceMode}
-                onValueChange={(v) => setDeviceMode(v as "all" | "custom")}
+                onValueChange={(v) => {
+                  const m = v as "all" | "custom";
+                  setDeviceMode(m);
+                  if (m === "custom") {
+                    setGuest(false);
+                  }
+                }}
               >
                 <label className="flex cursor-pointer items-center gap-3 rounded-xl border border-border px-3 py-2.5">
                   <RadioGroupItem value="all" id="dev-all" />

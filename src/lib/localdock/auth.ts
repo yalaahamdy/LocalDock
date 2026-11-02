@@ -49,12 +49,13 @@ export function getAuth(req: Request): AuthContext {
   if (ownerKey) {
     const settings = getSettings();
     if (ownerKey === settings.ownerKey) {
-      if (settings.allowRemoteOwner || isLoopbackRequest(req)) {
+      // The root owner console is strictly locked to loopback (the host computer itself).
+      // Remote network callers are NEVER granted owner privilege to bypass device-level share ACLs.
+      if (isLoopbackRequest(req)) {
         return { kind: "owner" };
       }
-      // If remote owner is disabled, fall through to check if this is an authorized paired device
+      // Network requests carrying an ownerKey fall through to be verified strictly as paired devices.
     }
-    // wrong owner key falls through to device check
   }
 
   const deviceToken =
@@ -107,16 +108,43 @@ export function canAccessShare(
 ): boolean {
   const required = ACCESS_MATRIX[action];
 
+  // 1. Strict specific device isolation (100% airtight)
+  // When a share restricts access to specific devices (allowedDevices !== "all"):
+  if (share.allowedDevices !== "all") {
+    // Unpaired devices, phantom/fake devices, guests, or anonymous callers are 100% BLOCKED.
+    if (auth.kind !== "device" && auth.kind !== "owner") {
+      return false;
+    }
+
+    // For paired devices, the device ID MUST be explicitly listed in allowedDevices
+    if (auth.kind === "device") {
+      if (
+        !auth.device ||
+        !Array.isArray(share.allowedDevices) ||
+        !share.allowedDevices.includes(auth.device.id)
+      ) {
+        return false;
+      }
+      return meetsLevel(share.access, required);
+    }
+
+    // The host console (owner) is allowed to manage all shares locally
+    if (auth.kind === "owner") {
+      return true;
+    }
+
+    return false;
+  }
+
+  // 2. Shares open to all paired devices (allowedDevices === "all")
   if (auth.kind === "owner") return true;
 
   if (auth.kind === "device" && auth.device) {
-    if (share.allowedDevices !== "all" && !share.allowedDevices.includes(auth.device.id)) {
-      return false;
-    }
     return meetsLevel(share.access, required);
   }
 
-  if (auth.kind === "none") {
+  // 3. Guest / anonymous access (only allowed when allowedDevices is "all" AND guestEnabled is true)
+  if (auth.kind === "none" || (auth as { kind: string }).kind === "guest") {
     if (!share.guestEnabled) return false;
     return meetsLevel(share.access, required);
   }
