@@ -660,7 +660,7 @@ function RichTextAndDocReader({
     utter.onerror = () => setIsSpeaking(false);
     window.speechSynthesis.speak(utter);
     setIsSpeaking(true);
-    toast.success(hasArabic ? "🔊 جاري القراءة الصوتية بالعربية" : "🔊 Reading aloud...");
+    toast.success(hasArabic ? "جاري القراءة الصوتية بالعربية" : "Reading aloud...");
   }, [isSpeaking, rawText]);
 
   const currentTheme = THEME_CLASSES[theme];

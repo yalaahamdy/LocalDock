@@ -484,9 +484,9 @@ function normalizeHost(raw) {
   const withScheme = /^https?:\/\//i.test(s) ? s : `http://${s}`;
   try {
     const u = new URL(withScheme);
-    if (!u.hostname || u.protocol !== "http:") return null;
-    const port = u.port || "3000";
-    return { url: `http://${u.hostname}:${port}`, name: u.hostname };
+    if (!u.hostname || !/^https?:$/.test(u.protocol)) return null;
+    const port = u.port || (u.protocol === "https:" ? "443" : "3000");
+    return { url: `${u.protocol}//${u.hostname}:${port}`, name: u.hostname };
   } catch { return null; }
 }
 
@@ -640,7 +640,7 @@ function renderHosts() {
     forgetBtn.className   = "btn icon";
     forgetBtn.type        = "button";
     forgetBtn.title       = t("forget");
-    forgetBtn.textContent = "✕";
+    forgetBtn.innerHTML   = `<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>`;
     forgetBtn.addEventListener("click", () => {
       forgetHost(host.url);
       hostMap.delete(host.url);
@@ -792,7 +792,7 @@ function buildStep1ServerList(preselect) {
   if (hosts.length === 0) {
     const empty = document.createElement("div");
     empty.className   = "empty-servers";
-    empty.innerHTML   = `<div class="empty-icon">🔍</div><p></p>`;
+    empty.innerHTML   = `<div class="empty-icon"><svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg></div><p></p>`;
     empty.querySelector("p").textContent = t("emptyServersHint");
     list.appendChild(empty);
     // Auto-show manual entry.
@@ -805,14 +805,14 @@ function buildStep1ServerList(preselect) {
       item.className = "server-item";
       item.dataset.url = host.url;
       item.innerHTML = `
-        <div class="server-item-icon">🖥</div>
+        <div class="server-item-icon"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#2dd4bf" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="2" width="20" height="8" rx="2" ry="2"/><rect x="2" y="14" width="20" height="8" rx="2" ry="2"/><line x1="6" y1="6" x2="6.01" y2="6"/><line x1="6" y1="18" x2="6.01" y2="18"/></svg></div>
         <div class="server-item-info">
           <div class="server-item-name"></div>
           <div class="server-item-url"></div>
         </div>
         <div class="server-item-badge">
           <span class="chip ${host.state === "online" ? "state online" : host.state === "offline" ? "state offline" : ""}"></span>
-          <span class="server-check">✓</span>
+          <span class="server-check"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg></span>
         </div>
       `;
       item.querySelector(".server-item-name").textContent = host.name || "LocalDock";
@@ -882,7 +882,7 @@ function renderSelectedServerPreview() {
   const preview = $("#selectedServerPreview");
   if (!pairTarget) { preview.innerHTML = ""; return; }
   preview.innerHTML = `
-    <div class="selected-server-icon">🖥</div>
+    <div class="selected-server-icon"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#2dd4bf" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="2" width="20" height="8" rx="2" ry="2"/><rect x="2" y="14" width="20" height="8" rx="2" ry="2"/><line x1="6" y1="6" x2="6.01" y2="6"/><line x1="6" y1="18" x2="6.01" y2="18"/></svg></div>
     <div class="selected-server-info">
       <div class="selected-server-name"></div>
       <div class="selected-server-url"></div>
@@ -1194,7 +1194,7 @@ function scanQrTick() {
 function onQrDecoded(content) {
   qrScanActive = false;
   const feedback = $("#qrFeedback");
-  feedback.textContent = "✓";
+  feedback.innerHTML = `<svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="#2dd4bf" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>`;
   feedback.classList.remove("hidden");
 
   setTimeout(() => {
@@ -1282,7 +1282,7 @@ setTimeout(() => checkAppUpdates(), 1200);
 
 /* ─────────────────────────── Auto-Updater ──────────────────────────── */
 
-const CURRENT_APP_VERSION = "1.3.0";
+const CURRENT_APP_VERSION = "1.3.1";
 
 async function checkAppUpdates() {
   try {
@@ -1307,16 +1307,28 @@ async function checkAppUpdates() {
       const apk = assets.find(a => String(a.name || "").toLowerCase().endsWith(".apk"));
       const banner = $("#updateBanner");
       if (banner && apk) {
-        banner.innerHTML = `<span style="display:flex;align-items:center;gap:6px;">✨ <span><strong>تحديث متوفر:</strong> v${tagName}</span></span><button type="button" class="btn primary compact" style="margin:0;padding:5px 12px;font-size:0.75rem;border-radius:10px;">تحديث وتثبيت</button>`;
+        banner.innerHTML = `
+          <div style="display:flex;align-items:center;justify-content:space-between;width:100%;gap:12px;">
+            <div style="display:flex;align-items:center;gap:8px;">
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#2dd4bf" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m12 3-1.9 5.8a2 2 0 0 1-1.3 1.3L3 12l5.8 1.9a2 2 0 0 1 1.3 1.3L12 21l1.9-5.8a2 2 0 0 1 1.3-1.3L21 12l-5.8-1.9a2 2 0 0 1-1.3-1.3Z"/></svg>
+              <span><strong>تحديث جديد متوفر:</strong> v${tagName}</span>
+            </div>
+            <button type="button" id="startUpdateBtn" class="btn primary compact" style="margin:0;padding:6px 14px;font-size:0.75rem;border-radius:10px;font-weight:700;">تحديث وتثبيت</button>
+          </div>
+        `;
         banner.classList.remove("hidden");
-        banner.onclick = () => {
-          if (window.LocalDockAndroid && typeof window.LocalDockAndroid.downloadDirect === "function") {
-            window.LocalDockAndroid.downloadDirect(apk.browser_download_url, apk.name, apk.size || -1, "", "");
-            toast("جارٍ تنزيل التحديث... سيتم فتح التثبيت فور الانتهاء.");
-          } else {
-            window.open(apk.browser_download_url, "_blank");
-          }
-        };
+        const updateBtn = document.getElementById("startUpdateBtn");
+        if (updateBtn) {
+          updateBtn.onclick = (e) => {
+            e.stopPropagation();
+            toast("جارٍ تنزيل التحديث... سيتم فتح مثبت الحزم تلقائياً فور الاكتمال.");
+            if (window.LocalDockAndroid && typeof window.LocalDockAndroid.downloadDirect === "function") {
+              window.LocalDockAndroid.downloadDirect(apk.browser_download_url, apk.name, apk.size || -1, "", "");
+            } else {
+              window.open(apk.browser_download_url, "_blank");
+            }
+          };
+        }
       }
     }
   } catch (err) {

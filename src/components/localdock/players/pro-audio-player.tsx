@@ -602,7 +602,7 @@ export function ProAudioPlayer({
               }}
               title="تكرار مقطع A-B"
             >
-              {loopA === null ? "A-B" : loopB === null ? "A.." : "A-B 🔁"}
+              {loopA === null ? "A-B" : loopB === null ? "A.." : "A-B تكرار"}
             </Button>
           </div>
 

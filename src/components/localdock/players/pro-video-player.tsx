@@ -207,7 +207,7 @@ export function ProVideoPlayer({
       );
       videoRef.current.currentTime = next;
       setCurrentTime(next);
-      showHud(`${delta > 0 ? "⏩ +" : "⏪ "}${delta}s`);
+      showHud(`${delta > 0 ? "+" : ""}${delta}s`);
     },
     [showHud]
   );
@@ -217,7 +217,7 @@ export function ProVideoPlayer({
     const next = rates[(rates.indexOf(playbackRate) + 1) % rates.length] || 1;
     setPlaybackRate(next);
     if (videoRef.current) videoRef.current.playbackRate = next;
-    showHud(`⚡ السرعة: ${next}x`);
+    showHud(`السرعة: ${next}x`);
   };
 
   const cycleFitMode = () => {
@@ -231,7 +231,7 @@ export function ProVideoPlayer({
     };
     const next = modes[(modes.indexOf(fitMode) + 1) % modes.length];
     setFitMode(next);
-    showHud(`📐 ${labels[next]}`);
+    showHud(labels[next]);
   };
 
   const handleRotateScreen = async () => {
@@ -242,11 +242,11 @@ export function ProVideoPlayer({
         const curType = String(orientation.type || "");
         if (curType.startsWith("landscape")) {
           await orientation.unlock?.();
-          showHud("📱 إلغاء قفل الدوران");
+          showHud("إلغاء قفل الدوران");
           return;
         } else {
           await orientation.lock("landscape");
-          showHud("🔄 الوضع الأفقي (Landscape)");
+          showHud("الوضع الأفقي (Landscape)");
           return;
         }
       }
@@ -255,25 +255,25 @@ export function ProVideoPlayer({
     }
     const nextRot = (videoRotation + 90) % 360;
     setVideoRotation(nextRot);
-    showHud(`🔄 تدوير الفيديو ${nextRot}°`);
+    showHud(`تدوير الفيديو ${nextRot}°`);
   };
 
   const handleToggleABLoop = () => {
     if (loopA === null) {
       setLoopA(currentTime);
-      showHud(`🅰️ تم تحديد نقطة البداية A (${formatTime(currentTime)})`);
+      showHud(`نقطة البداية A (${formatTime(currentTime)})`);
     } else if (loopB === null) {
       if (currentTime <= loopA + 0.5) {
         setLoopA(null);
-        showHud("🔁 تم إلغاء تكرار A-B");
+        showHud("إلغاء تكرار A-B");
       } else {
         setLoopB(currentTime);
-        showHud(`🅱️ تكرار المقطع (${formatTime(loopA)} - ${formatTime(currentTime)})`);
+        showHud(`تكرار المقطع (${formatTime(loopA)} - ${formatTime(currentTime)})`);
       }
     } else {
       setLoopA(null);
       setLoopB(null);
-      showHud("🔁 تم إيقاف تكرار A-B");
+      showHud("إيقاف تكرار A-B");
     }
   };
 
@@ -299,7 +299,7 @@ export function ProVideoPlayer({
       const bridge = typeof window !== "undefined" ? (window as any).LocalDockAndroid : null;
       if (bridge && typeof bridge.saveBlob === "function") {
         bridge.saveBlob(dataUrl, snapName, "image/png");
-        showHud("📸 تم حفظ اللقطة في التنزيلات");
+        showHud("تم حفظ لقطة الشاشة في التنزيلات");
         return;
       }
 
@@ -309,7 +309,7 @@ export function ProVideoPlayer({
       document.body.appendChild(a);
       a.click();
       a.remove();
-      showHud("📸 تم التقاط وحفظ الصورة");
+      showHud("تم التقاط وحفظ الصورة");
     } catch {
       toast.error("تعذر التقاط صورة من هذا الفيديو");
     }
@@ -329,7 +329,7 @@ export function ProVideoPlayer({
       setSubCues(parsed);
       setSubName(file.name);
       setSubEnabled(true);
-      showHud(`💬 تم تحميل الترجمة (${parsed.length} سطر)`);
+      showHud(`تم تحميل الترجمة (${parsed.length} سطر)`);
     } catch {
       toast.error("تعذر قراءة ملف الترجمة");
     } finally {
@@ -367,7 +367,7 @@ export function ProVideoPlayer({
         if (zoom > 1) {
           setZoom(1);
           setPan({ x: 0, y: 0 });
-          showHud("🔍 100%");
+          showHud("100%");
         } else if (t.clientX < w * 0.36) {
           seek(-10);
         } else if (t.clientX > w * 0.64) {
@@ -413,7 +413,7 @@ export function ProVideoPlayer({
       const scale = dist / pinchDistRef.current;
       setZoom((z) => {
         const next = Math.min(4, Math.max(1, +(z * scale).toFixed(2)));
-        showHud(`🔍 ${Math.round(next * 100)}%`);
+        showHud(`${Math.round(next * 100)}%`);
         return next;
       });
       pinchDistRef.current = dist;
@@ -454,7 +454,7 @@ export function ProVideoPlayer({
         const delta = -dy / 220;
         const nextB = Math.max(0.25, Math.min(1.6, touchStartRef.current.bright + delta));
         setBrightness(nextB);
-        showHud(`☀️ السطوع: ${Math.round(nextB * 100)}%`);
+        showHud(`السطوع: ${Math.round(nextB * 100)}%`);
       } else if (mode === "volume") {
         const delta = -dy / 220;
         const nextV = Math.max(0, Math.min(1, touchStartRef.current.vol + delta));
@@ -464,14 +464,14 @@ export function ProVideoPlayer({
           videoRef.current.volume = nextV;
           videoRef.current.muted = nextV === 0;
         }
-        showHud(`🔊 الصوت: ${Math.round(nextV * 100)}%`);
+        showHud(`الصوت: ${Math.round(nextV * 100)}%`);
       } else if (mode === "seek" && videoRef.current && duration > 0) {
         const seekDelta = (dx / e.currentTarget.clientWidth) * Math.min(duration, 120);
         const target = Math.max(0, Math.min(duration, touchStartRef.current.curTime + seekDelta));
         videoRef.current.currentTime = target;
         setCurrentTime(target);
         const sign = seekDelta >= 0 ? "+" : "";
-        showHud(`⏱️ ${formatTime(target)} (${sign}${Math.round(seekDelta)}s)`);
+        showHud(`${formatTime(target)} (${sign}${Math.round(seekDelta)}s)`);
       }
     }
   };
@@ -578,7 +578,7 @@ export function ProVideoPlayer({
       {/* Speed Boost 2.0x Pill */}
       {speedBoostActive && (
         <div className="pointer-events-none absolute top-14 left-1/2 z-40 -translate-x-1/2 animate-pulse rounded-full bg-amber-500/90 px-4 py-1.5 text-xs font-bold text-black shadow-lg">
-          ⚡ سرعة مضاعفة 2.0x
+          سرعة مضاعفة 2.0x
         </div>
       )}
 
@@ -640,7 +640,7 @@ export function ProVideoPlayer({
           onClick={() => {
             setIsLocked(false);
             setShowUnlockPill(false);
-            showHud("🔓 تم فتح قفل الشاشة");
+            showHud("تم فتح قفل الشاشة");
           }}
           className="absolute bottom-10 left-1/2 z-50 flex -translate-x-1/2 items-center gap-2 rounded-full border border-amber-400/50 bg-black/85 px-5 py-2.5 text-sm font-semibold text-amber-300 shadow-2xl backdrop-blur-md active:scale-95"
         >
@@ -795,7 +795,7 @@ export function ProVideoPlayer({
                 onClick={() => {
                   setIsLocked(true);
                   setShowUnlockPill(true);
-                  showHud("🔒 تم قفل اللمس");
+                  showHud("تم قفل اللمس");
                 }}
                 title="قفل الشاشة واللمس"
               >
@@ -862,7 +862,7 @@ export function ProVideoPlayer({
                 onClick={handleToggleABLoop}
                 title="تكرار مقطع A-B"
               >
-                {loopA === null ? "A-B" : loopB === null ? "A.." : "A-B 🔁"}
+                {loopA === null ? "A-B" : loopB === null ? "A.." : "A-B تكرار"}
               </Button>
 
               {/* Loop video */}
@@ -875,7 +875,7 @@ export function ProVideoPlayer({
                 )}
                 onClick={() => {
                   setIsLooping((l) => !l);
-                  showHud(!isLooping ? "🔁 تكرار الفيديو مفعل" : "➡️ إيقاف التكرار");
+                  showHud(!isLooping ? "تكرار الفيديو: مفعّل" : "تكرار الفيديو: معطّل");
                 }}
                 title="تكرار الفيديو"
               >
@@ -893,7 +893,7 @@ export function ProVideoPlayer({
                 onClick={() => {
                   if (subCues.length > 0) {
                     setSubEnabled((s) => !s);
-                    showHud(!subEnabled ? `💬 إظهار الترجمة (${subName})` : "💬 إخفاء الترجمة");
+                    showHud(!subEnabled ? `إظهار الترجمة (${subName})` : "إخفاء الترجمة");
                   } else {
                     subInputRef.current?.click();
                   }
@@ -926,7 +926,7 @@ export function ProVideoPlayer({
                 onClick={() => {
                   const next = brightness >= 1.3 ? 0.7 : brightness < 1 ? 1 : 1.35;
                   setBrightness(next);
-                  showHud(`☀️ السطوع: ${Math.round(next * 100)}%`);
+                  showHud(`السطوع: ${Math.round(next * 100)}%`);
                 }}
                 title="تغيير السطوع"
               >

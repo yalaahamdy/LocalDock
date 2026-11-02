@@ -48,6 +48,8 @@ dev.log
 dev.out.log
 test
 prompt
+dist-final/
+*.keystore
 
 server.log
 # Skills directory

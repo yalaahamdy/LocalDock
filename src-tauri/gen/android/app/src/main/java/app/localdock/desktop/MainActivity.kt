@@ -10,6 +10,7 @@ import android.content.Intent
 import android.content.pm.PackageManager
 import android.media.MediaScannerConnection
 import android.net.Uri
+import android.net.http.SslError
 import android.net.wifi.WifiManager
 import android.os.Build
 import android.os.Bundle
@@ -22,10 +23,12 @@ import android.view.ViewGroup
 import android.view.WindowManager
 import android.webkit.CookieManager
 import android.webkit.JavascriptInterface
+import android.webkit.SslErrorHandler
 import android.webkit.URLUtil
 import android.webkit.WebChromeClient
 import android.webkit.WebSettings
 import android.webkit.WebView
+import android.webkit.WebViewClient
 import android.widget.FrameLayout
 import android.widget.Toast
 import androidx.activity.enableEdgeToEdge
@@ -54,6 +57,11 @@ class LocalDockAndroidBridge(private val activity: MainActivity) {
   }
 
   @JavascriptInterface
+  fun installApk(url: String, filename: String) {
+    activity.downloadDirectNative(url, filename, -1L, "", "")
+  }
+
+  @JavascriptInterface
   fun saveBlob(base64Data: String, filename: String, mimeType: String) {
     activity.saveBlobNative(base64Data, filename, mimeType)
   }
@@ -66,6 +74,7 @@ class MainActivity : TauriActivity() {
   private var customView: View? = null
   private var customViewCallback: WebChromeClient.CustomViewCallback? = null
   private var fullscreenContainer: FrameLayout? = null
+  private var pendingApkToInstall: File? = null
 
   override fun onCreate(savedInstanceState: Bundle?) {
     enableEdgeToEdge()
@@ -87,8 +96,25 @@ class MainActivity : TauriActivity() {
       allowFileAccess = true
       allowContentAccess = true
       domStorageEnabled = true
+      databaseEnabled = true
       javaScriptEnabled = true
       mediaPlaybackRequiresUserGesture = false
+      setSupportMultipleWindows(false)
+      loadWithOverviewMode = true
+      useWideViewPort = true
+      cacheMode = WebSettings.LOAD_DEFAULT
+    }
+
+    CookieManager.getInstance().apply {
+      setAcceptCookie(true)
+      setAcceptThirdPartyCookies(webView, true)
+    }
+
+    webView.webViewClient = object : WebViewClient() {
+      override fun onReceivedSslError(view: WebView?, handler: SslErrorHandler?, error: SslError?) {
+        // Proceed on local self-signed or local development SSL certificates
+        handler?.proceed()
+      }
     }
 
     // Set WebChromeClient to safely handle HTML5 video fullscreen and custom views without black screen
@@ -240,34 +266,49 @@ class MainActivity : TauriActivity() {
         val totalBytes = if (expectedSize > 0) expectedSize else conn.contentLengthLong
 
         var outputStream: OutputStream? = null
+        val isApk = displayName.lowercase().endsWith(".apk")
+        var targetApkFile: File? = null
 
-        // 1. Preferred modern path: MediaStore.Downloads (Android 10+ / API 29+)
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
-          val resolver = applicationContext.contentResolver
-          val contentValues = ContentValues().apply {
-            put(MediaStore.Downloads.DISPLAY_NAME, displayName)
-            put(MediaStore.Downloads.MIME_TYPE, mimeType)
-            put(MediaStore.Downloads.RELATIVE_PATH, Environment.DIRECTORY_DOWNLOADS)
-            put(MediaStore.Downloads.IS_PENDING, 1)
-          }
-          outUri = resolver.insert(MediaStore.Downloads.EXTERNAL_CONTENT_URI, contentValues)
-          if (outUri != null) {
-            outputStream = resolver.openOutputStream(outUri)
-          }
-        }
-
-        // 2. Legacy path for Android <= 9 or fallback if MediaStore returned null
-        if (outputStream == null) {
-          val downloadsDir = Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DOWNLOADS)
-          if (!downloadsDir.exists()) downloadsDir.mkdirs()
-          val destFile = File(downloadsDir, displayName)
-          localLegacyFile = destFile
-          outputStream = FileOutputStream(destFile)
+        // If it's an APK update, save it directly to app-accessible storage so PackageInstaller can parse it
+        if (isApk) {
+          val appDownloads = getExternalFilesDir(Environment.DIRECTORY_DOWNLOADS) ?: cacheDir
+          if (!appDownloads.exists()) appDownloads.mkdirs()
+          targetApkFile = File(appDownloads, displayName)
+          outputStream = FileOutputStream(targetApkFile)
           outUri = FileProvider.getUriForFile(
             this@MainActivity,
             "${applicationContext.packageName}.fileprovider",
-            destFile
+            targetApkFile
           )
+        } else {
+          // 1. Preferred modern path: MediaStore.Downloads (Android 10+ / API 29+)
+          if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+            val resolver = applicationContext.contentResolver
+            val contentValues = ContentValues().apply {
+              put(MediaStore.Downloads.DISPLAY_NAME, displayName)
+              put(MediaStore.Downloads.MIME_TYPE, mimeType)
+              put(MediaStore.Downloads.RELATIVE_PATH, Environment.DIRECTORY_DOWNLOADS)
+              put(MediaStore.Downloads.IS_PENDING, 1)
+            }
+            outUri = resolver.insert(MediaStore.Downloads.EXTERNAL_CONTENT_URI, contentValues)
+            if (outUri != null) {
+              outputStream = resolver.openOutputStream(outUri)
+            }
+          }
+
+          // 2. Legacy path for Android <= 9 or fallback if MediaStore returned null
+          if (outputStream == null) {
+            val downloadsDir = Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DOWNLOADS)
+            if (!downloadsDir.exists()) downloadsDir.mkdirs()
+            val destFile = File(downloadsDir, displayName)
+            localLegacyFile = destFile
+            outputStream = FileOutputStream(destFile)
+            outUri = FileProvider.getUriForFile(
+              this@MainActivity,
+              "${applicationContext.packageName}.fileprovider",
+              destFile
+            )
+          }
         }
 
         conn.inputStream.use { input ->
@@ -341,12 +382,23 @@ class MainActivity : TauriActivity() {
 
         nm?.notify(notifId, successNotif)
 
-        runOnUiThread {
-          Toast.makeText(
-            applicationContext,
-            "تم حفظ $displayName في مجلد التنزيلات بنجاح",
-            Toast.LENGTH_LONG
-          ).show()
+        if (isApk && targetApkFile != null && targetApkFile.exists()) {
+          runOnUiThread {
+            Toast.makeText(
+              applicationContext,
+              "اكتمل تنزيل التحديث، جارٍ فتح مثبت الحزم لتثبيت الإصدار الجديد...",
+              Toast.LENGTH_SHORT
+            ).show()
+            installApkPackage(targetApkFile)
+          }
+        } else {
+          runOnUiThread {
+            Toast.makeText(
+              applicationContext,
+              "تم حفظ $displayName في مجلد التنزيلات بنجاح",
+              Toast.LENGTH_LONG
+            ).show()
+          }
         }
       } catch (e: Exception) {
         val failNotif = NotificationCompat.Builder(this, CHANNEL_ID)
@@ -494,6 +546,62 @@ class MainActivity : TauriActivity() {
             startActivity(intent)
           } catch (_: Exception) {}
         }
+      }
+    }
+  }
+
+  fun installApkPackage(apkFile: File) {
+    try {
+      if (!apkFile.exists()) {
+        Toast.makeText(applicationContext, "ملف التحديث غير موجود", Toast.LENGTH_SHORT).show()
+        return
+      }
+
+      if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+        if (!packageManager.canRequestPackageInstalls()) {
+          pendingApkToInstall = apkFile
+          Toast.makeText(
+            applicationContext,
+            "يرجى السماح للتطبيق بتثبيت التحديثات من الإعدادات للمتابعة",
+            Toast.LENGTH_LONG
+          ).show()
+          val settingsIntent = Intent(Settings.ACTION_MANAGE_UNKNOWN_APP_SOURCES).apply {
+            data = Uri.parse("package:$packageName")
+            addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+          }
+          startActivity(settingsIntent)
+          return
+        }
+      }
+
+      val apkUri = FileProvider.getUriForFile(
+        this@MainActivity,
+        "${applicationContext.packageName}.fileprovider",
+        apkFile
+      )
+
+      val installIntent = Intent(Intent.ACTION_VIEW).apply {
+        setDataAndType(apkUri, "application/vnd.android.package-archive")
+        addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+        addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+      }
+      startActivity(installIntent)
+    } catch (e: Exception) {
+      Toast.makeText(
+        applicationContext,
+        "فشل بدء تثبيت التحديث: ${e.message}",
+        Toast.LENGTH_LONG
+      ).show()
+    }
+  }
+
+  override fun onResume() {
+    super.onResume()
+    val pending = pendingApkToInstall
+    if (pending != null && pending.exists()) {
+      if (Build.VERSION.SDK_INT < Build.VERSION_CODES.O || packageManager.canRequestPackageInstalls()) {
+        pendingApkToInstall = null
+        installApkPackage(pending)
       }
     }
   }

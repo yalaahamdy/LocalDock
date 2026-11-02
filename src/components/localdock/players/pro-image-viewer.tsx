@@ -17,6 +17,7 @@ import {
   RotateCw,
   SlidersHorizontal,
   Sparkles,
+  X,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { formatBytes, formatDateTime } from "@/lib/localdock/client/format";
@@ -338,9 +339,9 @@ export function ProImageViewer({
             <button
               type="button"
               onClick={() => setShowInfo(false)}
-              className="text-white/60 hover:text-white"
+              className="rounded p-0.5 text-white/60 hover:bg-white/10 hover:text-white"
             >
-              ✕
+              <X className="size-4" />
             </button>
           </div>
           <div className="space-y-1.5 text-white/85">
