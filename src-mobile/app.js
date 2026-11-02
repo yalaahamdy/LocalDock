@@ -1282,7 +1282,175 @@ setTimeout(() => checkAppUpdates(), 1200);
 
 /* ─────────────────────────── Auto-Updater ──────────────────────────── */
 
-const CURRENT_APP_VERSION = "1.3.2";
+const CURRENT_APP_VERSION = "1.3.3";
+let activeUpdateApk = null;
+let activeUpdateTag = "";
+
+// Global update listener for Android native bridge
+window.LocalDockUpdateListener = {
+  onProgress: (percent, downloaded, total) => {
+    const sec = $("#updateProgressSection");
+    if (sec) sec.classList.remove("hidden");
+    const notesBox = $("#updateNotesContainer");
+    if (notesBox) notesBox.classList.add("hidden");
+
+    const bar = $("#updateProgressBar");
+    if (bar) bar.style.width = Math.max(2, Math.min(100, percent >= 0 ? percent : 50)) + "%";
+
+    const pctText = $("#updateProgressPercent");
+    if (pctText) pctText.textContent = (percent >= 0 ? percent : "--") + "%";
+
+    const bytesText = $("#updateProgressBytes");
+    if (bytesText && total > 0) {
+      const mbDown = (downloaded / (1024 * 1024)).toFixed(1);
+      const mbTotal = (total / (1024 * 1024)).toFixed(1);
+      bytesText.textContent = `${mbDown} MB / ${mbTotal} MB`;
+    }
+
+    const statusText = $("#updateProgressStatus");
+    if (statusText) {
+      statusText.textContent = percent >= 100 
+        ? "اكتمل التنزيل بنجاح، جارٍ فتح نافذة التثبيت الرسمية..." 
+        : "جارٍ التنزيل الداخلي بأمان في الذاكرة المؤقتة...";
+      statusText.style.color = "#cbd5e1";
+    }
+
+    const actionBtn = $("#updateModalActionBtn");
+    if (actionBtn) {
+      actionBtn.disabled = true;
+      actionBtn.style.opacity = "0.7";
+      actionBtn.innerHTML = `<span>جارٍ التحديث (${percent >= 0 ? percent : 0}%)...</span>`;
+    }
+  },
+
+  onComplete: () => {
+    const bar = $("#updateProgressBar");
+    if (bar) bar.style.width = "100%";
+    const pctText = $("#updateProgressPercent");
+    if (pctText) pctText.textContent = "100%";
+    const statusText = $("#updateProgressStatus");
+    if (statusText) {
+      statusText.textContent = "اكتمل التنزيل بنجاح! جارٍ تشغيل مثبت الحزم الآن...";
+      statusText.style.color = "#2dd4bf";
+    }
+    const actionBtn = $("#updateModalActionBtn");
+    if (actionBtn) {
+      actionBtn.disabled = true;
+      actionBtn.innerHTML = `<span>جارٍ تثبيت التحديث...</span>`;
+    }
+  },
+
+  onError: (errorMsg) => {
+    const statusText = $("#updateProgressStatus");
+    if (statusText) {
+      statusText.textContent = `فشل التحديث: ${errorMsg}`;
+      statusText.style.color = "#f87171";
+    }
+    const actionBtn = $("#updateModalActionBtn");
+    if (actionBtn) {
+      actionBtn.disabled = false;
+      actionBtn.style.opacity = "1";
+      actionBtn.innerHTML = `<span>إعادة المحاولة</span>`;
+    }
+    toast(`فشل التحديث الداخلي: ${errorMsg}`);
+  }
+};
+
+function showInAppUpdateModal(apk, tagName, releaseNotes) {
+  activeUpdateApk = apk;
+  activeUpdateTag = tagName;
+
+  const modal = $("#inAppUpdateModal");
+  if (!modal) return;
+
+  const tagBadge = $("#updateModalTag");
+  if (tagBadge) tagBadge.textContent = `v${tagName}`;
+
+  const notesEl = $("#updateModalNotes");
+  if (notesEl) {
+    notesEl.textContent = releaseNotes || "يتضمن هذا التحديث ميزة التحديث التلقائي الداخلي، وتحسينات في الأداء ومشغل الوسائط المتعددة.";
+  }
+
+  // Check Android unknown sources install permission
+  const permBox = $("#updatePermissionBox");
+  if (permBox) {
+    if (window.LocalDockAndroid && typeof window.LocalDockAndroid.checkCanInstallPackages === "function") {
+      const canInstall = window.LocalDockAndroid.checkCanInstallPackages();
+      if (!canInstall) {
+        permBox.classList.remove("hidden");
+      } else {
+        permBox.classList.add("hidden");
+      }
+    } else {
+      permBox.classList.add("hidden");
+    }
+  }
+
+  const permBtn = $("#updatePermBtn");
+  if (permBtn) {
+    permBtn.onclick = () => {
+      if (window.LocalDockAndroid && typeof window.LocalDockAndroid.requestInstallPackagesPermission === "function") {
+        window.LocalDockAndroid.requestInstallPackagesPermission();
+      }
+    };
+  }
+
+  // Reset progress section
+  const progressSec = $("#updateProgressSection");
+  if (progressSec) progressSec.classList.add("hidden");
+  const notesContainer = $("#updateNotesContainer");
+  if (notesContainer) notesContainer.classList.remove("hidden");
+
+  const actionBtn = $("#updateModalActionBtn");
+  if (actionBtn) {
+    actionBtn.disabled = false;
+    actionBtn.style.opacity = "1";
+    actionBtn.innerHTML = `
+      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+      <span>تحديث وتثبيت الآن</span>
+    `;
+    actionBtn.onclick = () => {
+      startSeamlessUpdate();
+    };
+  }
+
+  const closeBtn = $("#updateModalCloseBtn");
+  const cancelBtn = $("#updateModalCancelBtn");
+  const backdrop = $("#updateModalBackdrop");
+
+  const closeModal = () => {
+    if (window.LocalDockAndroid && typeof window.LocalDockAndroid.cancelInAppUpdate === "function") {
+      window.LocalDockAndroid.cancelInAppUpdate();
+    }
+    modal.classList.add("hidden");
+  };
+
+  if (closeBtn) closeBtn.onclick = closeModal;
+  if (cancelBtn) cancelBtn.onclick = closeModal;
+  if (backdrop) backdrop.onclick = closeModal;
+
+  modal.classList.remove("hidden");
+}
+
+function startSeamlessUpdate() {
+  if (!activeUpdateApk) return;
+
+  const progressSec = $("#updateProgressSection");
+  if (progressSec) progressSec.classList.remove("hidden");
+  const notesContainer = $("#updateNotesContainer");
+  if (notesContainer) notesContainer.classList.add("hidden");
+
+  const statusText = $("#updateProgressStatus");
+  if (statusText) statusText.textContent = "جارٍ بدء التنزيل الداخلي...";
+
+  if (window.LocalDockAndroid && typeof window.LocalDockAndroid.startInAppUpdate === "function") {
+    toast("بدأ التحديث الداخلي التلقائي...");
+    window.LocalDockAndroid.startInAppUpdate(activeUpdateApk.browser_download_url, activeUpdateTag);
+  } else {
+    // Fallback for desktop browser preview
+    window.open(activeUpdateApk.browser_download_url, "_blank");
+  }
+}
 
 async function checkAppUpdates() {
   try {
@@ -1313,7 +1481,7 @@ async function checkAppUpdates() {
               <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#2dd4bf" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m12 3-1.9 5.8a2 2 0 0 1-1.3 1.3L3 12l5.8 1.9a2 2 0 0 1 1.3 1.3L12 21l1.9-5.8a2 2 0 0 1 1.3-1.3L21 12l-5.8-1.9a2 2 0 0 1-1.3-1.3Z"/></svg>
               <span><strong>تحديث جديد متوفر:</strong> v${tagName}</span>
             </div>
-            <button type="button" id="startUpdateBtn" class="btn primary compact" style="margin:0;padding:6px 14px;font-size:0.75rem;border-radius:10px;font-weight:700;">تحديث وتثبيت</button>
+            <button type="button" id="startUpdateBtn" class="btn primary compact" style="margin:0;padding:6px 14px;font-size:0.75rem;border-radius:10px;font-weight:700;">تحديث تلقائي</button>
           </div>
         `;
         banner.classList.remove("hidden");
@@ -1321,14 +1489,12 @@ async function checkAppUpdates() {
         if (updateBtn) {
           updateBtn.onclick = (e) => {
             e.stopPropagation();
-            toast("جارٍ تنزيل التحديث... سيتم فتح مثبت الحزم تلقائياً فور الاكتمال.");
-            if (window.LocalDockAndroid && typeof window.LocalDockAndroid.downloadDirect === "function") {
-              window.LocalDockAndroid.downloadDirect(apk.browser_download_url, apk.name, apk.size || -1, "", "");
-            } else {
-              window.open(apk.browser_download_url, "_blank");
-            }
+            showInAppUpdateModal(apk, tagName, data.body);
           };
         }
+        banner.onclick = () => {
+          showInAppUpdateModal(apk, tagName, data.body);
+        };
       }
     }
   } catch (err) {

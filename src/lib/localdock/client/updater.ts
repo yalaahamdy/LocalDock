@@ -119,15 +119,22 @@ export async function installUpdate(update: UpdateInfo): Promise<{ started: bool
   const isAndroidNative = typeof window !== "undefined" && Boolean((window as unknown as { LocalDockAndroid?: unknown }).LocalDockAndroid);
   const isMobile = typeof navigator !== "undefined" && /Android|iPhone|iPad|iPod/i.test(navigator.userAgent);
 
-  // 1. Native Android App: download APK and trigger package installer
+  // 1. Native Android App: internal seamless update
   if (isAndroidNative && update.apkAsset) {
     const androidBridge = (window as unknown as {
       LocalDockAndroid?: {
+        startInAppUpdate?: (url: string, newVersion: string) => void;
         downloadDirect?: (url: string, filename: string, size: number, devToken: string, owner: string) => void;
       };
     }).LocalDockAndroid;
 
-    if (typeof androidBridge?.downloadDirect === "function") {
+    if (typeof androidBridge?.startInAppUpdate === "function") {
+      androidBridge.startInAppUpdate(update.apkAsset.url, update.latestVersion);
+      return {
+        started: true,
+        message: "بدأ التحديث الداخلي التلقائي... جارٍ تنزيل الحزمة في الذاكرة المؤقتة وتثبيتها مباشرة دون تنزيل ملفات إضافية.",
+      };
+    } else if (typeof androidBridge?.downloadDirect === "function") {
       androidBridge.downloadDirect(
         update.apkAsset.url,
         update.apkAsset.name || `LocalDock-v${update.latestVersion}.apk`,

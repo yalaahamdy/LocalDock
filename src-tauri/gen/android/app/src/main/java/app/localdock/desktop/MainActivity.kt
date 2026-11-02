@@ -18,6 +18,7 @@ import android.os.Environment
 import android.provider.MediaStore
 import android.provider.Settings
 import android.util.Base64
+import org.json.JSONObject
 import android.view.View
 import android.view.ViewGroup
 import android.view.WindowManager
@@ -62,19 +63,42 @@ class LocalDockAndroidBridge(private val activity: MainActivity) {
   }
 
   @JavascriptInterface
+  fun startInAppUpdate(url: String, newVersion: String) {
+    activity.startInAppUpdateNative(url, newVersion)
+  }
+
+  @JavascriptInterface
+  fun cancelInAppUpdate() {
+    activity.cancelInAppUpdateNative()
+  }
+
+  @JavascriptInterface
+  fun checkCanInstallPackages(): Boolean {
+    return activity.checkCanInstallPackagesNative()
+  }
+
+  @JavascriptInterface
+  fun requestInstallPackagesPermission() {
+    activity.requestInstallPackagesPermissionNative()
+  }
+
+  @JavascriptInterface
   fun saveBlob(base64Data: String, filename: String, mimeType: String) {
     activity.saveBlobNative(base64Data, filename, mimeType)
   }
 }
 
 class MainActivity : TauriActivity() {
+  private var appWebView: WebView? = null
   private var multicastLock: WifiManager.MulticastLock? = null
   private val downloadExecutor = Executors.newFixedThreadPool(4)
+  private val updateExecutor = Executors.newSingleThreadExecutor()
   private val notifCounter = AtomicInteger(1000)
   private var customView: View? = null
   private var customViewCallback: WebChromeClient.CustomViewCallback? = null
   private var fullscreenContainer: FrameLayout? = null
   private var pendingApkToInstall: File? = null
+  @Volatile private var isUpdateCancelled = false
 
   override fun onCreate(savedInstanceState: Bundle?) {
     enableEdgeToEdge()
@@ -83,6 +107,7 @@ class MainActivity : TauriActivity() {
     // Keep screen awake while using LocalDock (prevents video/download sleep blackout)
     window.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
 
+    cleanUpOldUpdates()
     createNotificationChannel()
     acquireMulticastLock()
     requestPermissionsPipeline()
@@ -90,6 +115,7 @@ class MainActivity : TauriActivity() {
 
   override fun onWebViewCreate(webView: WebView) {
     super.onWebViewCreate(webView)
+    appWebView = webView
 
     webView.settings.apply {
       mixedContentMode = WebSettings.MIXED_CONTENT_ALWAYS_ALLOW
@@ -599,6 +625,167 @@ class MainActivity : TauriActivity() {
     }
   }
 
+  fun checkCanInstallPackagesNative(): Boolean {
+    return if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+      packageManager.canRequestPackageInstalls()
+    } else {
+      true
+    }
+  }
+
+  fun requestInstallPackagesPermissionNative() {
+    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+      try {
+        val settingsIntent = Intent(Settings.ACTION_MANAGE_UNKNOWN_APP_SOURCES).apply {
+          data = Uri.parse("package:$packageName")
+          addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+        }
+        startActivity(settingsIntent)
+      } catch (e: Exception) {
+        Toast.makeText(applicationContext, "تعذر فتح إعدادات التثبيت: ${e.message}", Toast.LENGTH_SHORT).show()
+      }
+    }
+  }
+
+  fun cancelInAppUpdateNative() {
+    isUpdateCancelled = true
+    notifyJsUpdateError("تم إلغاء التحديث")
+  }
+
+  fun startInAppUpdateNative(apkUrl: String, newVersion: String) {
+    isUpdateCancelled = false
+    updateExecutor.execute {
+      val updatesDir = File(cacheDir, "app_updates")
+      if (!updatesDir.exists()) updatesDir.mkdirs()
+
+      val cleanVer = newVersion.replace(Regex("[^0-9a-zA-Z._-]"), "")
+      val tmpFile = File(updatesDir, "update.apk.tmp")
+      val finalFile = File(updatesDir, "LocalDock_v${cleanVer}.apk")
+
+      if (tmpFile.exists()) tmpFile.delete()
+      if (finalFile.exists()) finalFile.delete()
+
+      try {
+        val url = URL(apkUrl)
+        val conn = url.openConnection() as HttpURLConnection
+        conn.requestMethod = "GET"
+        conn.connectTimeout = 20000
+        conn.readTimeout = 60000
+        conn.instanceFollowRedirects = true
+        conn.setRequestProperty("User-Agent", "LocalDock-Android-Updater")
+
+        val respCode = conn.responseCode
+        if (respCode !in 200..299) {
+          throw Exception("HTTP $respCode: ${conn.responseMessage}")
+        }
+
+        val totalBytes = conn.contentLengthLong
+        var downloadedBytes = 0L
+
+        conn.inputStream.use { input ->
+          FileOutputStream(tmpFile).use { output ->
+            val buffer = ByteArray(64 * 1024)
+            var read: Int
+            var lastJsUpdate = 0L
+
+            while (input.read(buffer).also { read = it } != -1) {
+              if (isUpdateCancelled) {
+                tmpFile.delete()
+                return@execute
+              }
+
+              output.write(buffer, 0, read)
+              downloadedBytes += read
+
+              val now = System.currentTimeMillis()
+              if (now - lastJsUpdate > 250 || downloadedBytes == totalBytes) {
+                lastJsUpdate = now
+                val percent = if (totalBytes > 0) {
+                  ((downloadedBytes * 100) / totalBytes).toInt().coerceIn(0, 100)
+                } else {
+                  -1
+                }
+                notifyJsUpdateProgress(percent, downloadedBytes, totalBytes)
+              }
+            }
+            output.flush()
+          }
+        }
+
+        if (isUpdateCancelled) {
+          tmpFile.delete()
+          return@execute
+        }
+
+        // Rename tmp to final apk
+        if (!tmpFile.renameTo(finalFile)) {
+          tmpFile.copyTo(finalFile, overwrite = true)
+          tmpFile.delete()
+        }
+
+        // Validate package integrity before triggering install
+        val pkgInfo = packageManager.getPackageArchiveInfo(finalFile.absolutePath, 0)
+        if (pkgInfo == null) {
+          finalFile.delete()
+          throw Exception("حزمة التحديث غير صالحة أو غير مكتملة")
+        }
+
+        notifyJsUpdateComplete()
+
+        runOnUiThread {
+          installApkPackage(finalFile)
+        }
+
+      } catch (e: Exception) {
+        try { tmpFile.delete() } catch (_: Exception) {}
+        try { finalFile.delete() } catch (_: Exception) {}
+        notifyJsUpdateError(e.message ?: "حدث خطأ غير معروف أثناء التحديث")
+      }
+    }
+  }
+
+  private fun notifyJsUpdateProgress(percent: Int, downloaded: Long, total: Long) {
+    runOnUiThread {
+      appWebView?.evaluateJavascript(
+        "window.LocalDockUpdateListener && typeof window.LocalDockUpdateListener.onProgress === 'function' && window.LocalDockUpdateListener.onProgress($percent, $downloaded, $total);",
+        null
+      )
+    }
+  }
+
+  private fun notifyJsUpdateComplete() {
+    runOnUiThread {
+      appWebView?.evaluateJavascript(
+        "window.LocalDockUpdateListener && typeof window.LocalDockUpdateListener.onComplete === 'function' && window.LocalDockUpdateListener.onComplete();",
+        null
+      )
+    }
+  }
+
+  private fun notifyJsUpdateError(error: String) {
+    runOnUiThread {
+      val safeErr = JSONObject.quote(error)
+      appWebView?.evaluateJavascript(
+        "window.LocalDockUpdateListener && typeof window.LocalDockUpdateListener.onError === 'function' && window.LocalDockUpdateListener.onError($safeErr);",
+        null
+      )
+    }
+  }
+
+  private fun cleanUpOldUpdates() {
+    try {
+      val updatesDir = File(cacheDir, "app_updates")
+      if (updatesDir.exists() && updatesDir.isDirectory) {
+        val now = System.currentTimeMillis()
+        updatesDir.listFiles()?.forEach { file ->
+          if (file.name.endsWith(".tmp") || (now - file.lastModified() > 60 * 60 * 1000) || (file != pendingApkToInstall)) {
+            try { file.delete() } catch (_: Exception) {}
+          }
+        }
+      }
+    } catch (_: Exception) {}
+  }
+
   override fun onDestroy() {
     super.onDestroy()
     try {
@@ -608,6 +795,9 @@ class MainActivity : TauriActivity() {
     } catch (_: Exception) {}
     try {
       downloadExecutor.shutdown()
+    } catch (_: Exception) {}
+    try {
+      updateExecutor.shutdown()
     } catch (_: Exception) {}
   }
 
