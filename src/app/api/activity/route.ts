@@ -12,7 +12,7 @@ export async function GET(req: Request) {
   const limit = Math.min(Number(url.searchParams.get("limit") ?? 40) || 40, 200);
   const all = listActivity(limit * 2);
 
-  if (check.auth.kind === "owner" && isLoopbackRequest(req)) {
+  if (check.auth.kind === "owner") {
     return jsonOk({ activity: all.slice(0, limit) });
   }
 

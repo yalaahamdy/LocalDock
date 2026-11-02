@@ -91,7 +91,7 @@ export function AppShell({ onPairSuccess }: { onPairSuccess?: () => void }) {
     let cancelled = false;
     const timer = setTimeout(async () => {
       try {
-        const curVer = (system.data as { version?: string })?.version ?? "1.3.1";
+        const curVer = (system.data as { version?: string })?.version ?? "1.3.2";
         const update = await checkForUpdates(curVer);
         if (!cancelled && update && update.hasUpdate) {
           setAvailableUpdate(update);

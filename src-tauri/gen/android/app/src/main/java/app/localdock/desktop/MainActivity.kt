@@ -110,13 +110,6 @@ class MainActivity : TauriActivity() {
       setAcceptThirdPartyCookies(webView, true)
     }
 
-    webView.webViewClient = object : WebViewClient() {
-      override fun onReceivedSslError(view: WebView?, handler: SslErrorHandler?, error: SslError?) {
-        // Proceed on local self-signed or local development SSL certificates
-        handler?.proceed()
-      }
-    }
-
     // Set WebChromeClient to safely handle HTML5 video fullscreen and custom views without black screen
     webView.webChromeClient = object : WebChromeClient() {
       override fun onShowCustomView(view: View?, callback: CustomViewCallback?) {

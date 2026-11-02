@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import { setOwnerKey, Api, loadDeviceToken, saveDeviceToken, clearDeviceToken } from "@/lib/localdock/client/api";
+import { setOwnerKey, getOwnerKey, Api, loadDeviceToken, saveDeviceToken, clearDeviceToken } from "@/lib/localdock/client/api";
 import { setLanIp } from "@/lib/localdock/client/lan";
 import { isDesktop } from "@/lib/localdock/client/desktop";
 import { transfers } from "@/lib/localdock/client/transfer-engine";
@@ -53,7 +53,7 @@ export default function LocalDockApp() {
       const isLoopback = host === "localhost" || host === "127.0.0.1" || host === "::1" || isDesktop();
       
       // If server authorized and returned ownerKey (loopback or allowRemoteOwner=true), adopt it!
-      const effectiveOwnerKey = info.ownerKey || null;
+      const effectiveOwnerKey = info.ownerKey || getOwnerKey() || null;
       setOwnerKey(effectiveOwnerKey);
 
       // Server-reported desktop flag AND Tauri presence (belt & suspenders).

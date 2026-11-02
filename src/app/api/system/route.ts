@@ -22,11 +22,11 @@ export async function GET(req: Request) {
   const check = await requireAuth(req);
   if ("deny" in check) return check.deny;
 
-  const isLoopbackOwner = check.auth.kind === "owner" && isLoopbackRequest(req);
+  const isOwner = check.auth.kind === "owner";
   const settings = getSettings();
   const allShares = listShares();
   const devId = check.auth.device?.id;
-  const visibleShares = isLoopbackOwner
+  const visibleShares = isOwner
     ? allShares
     : allShares.filter((s) => s.allowedDevices === "all" || (Array.isArray(s.allowedDevices) && devId && s.allowedDevices.includes(devId)));
 
@@ -42,14 +42,14 @@ export async function GET(req: Request) {
     startedAt: STARTED_AT,
     uptimeSec: Math.floor((now - STARTED_AT) / 1000),
     devicesOnline: devices.filter((d) => now - d.lastSeenAt < 45_000).length,
-    devicesTrusted: isLoopbackOwner ? devices.length : 1,
+    devicesTrusted: isOwner ? devices.length : 1,
     sharesCount: visibleShares.length,
     sharedBytes: visibleShares.reduce((acc, s) => acc + s.sizeBytes, 0),
     transferSpeedBps: currentSpeedBps(),
     activeTransfers: 0, // client-side value merges in the UI
-    platform: isLoopbackOwner ? `${os.type()} ${os.release()}` : "LocalDock",
-    hostname: isLoopbackOwner ? os.hostname() : "LocalDock Host",
-    network: isLoopbackOwner ? networkInterfaces() : [],
+    platform: isOwner ? `${os.type()} ${os.release()}` : "LocalDock",
+    hostname: isOwner ? os.hostname() : "LocalDock Host",
+    network: isOwner ? networkInterfaces() : [],
     /** Best-guess primary LAN IPv4 — kept fresh for share links / QR codes. */
     lanIp: pickPrimaryLanIp(),
     storage,

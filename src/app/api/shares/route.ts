@@ -23,8 +23,8 @@ export async function GET(req: Request) {
   if ("deny" in check) return check.deny;
   const allShares = listShares();
 
-  // Only the host console on loopback gets to view every share without restriction
-  if (check.auth.kind === "owner" && isLoopbackRequest(req)) {
+  // The authenticated owner gets to view and manage every share
+  if (check.auth.kind === "owner") {
     return jsonOk({ shares: allShares });
   }
 

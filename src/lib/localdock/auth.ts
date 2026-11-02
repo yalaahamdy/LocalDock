@@ -49,12 +49,7 @@ export function getAuth(req: Request): AuthContext {
   if (ownerKey) {
     const settings = getSettings();
     if (ownerKey === settings.ownerKey) {
-      // The root owner console is strictly locked to loopback (the host computer itself).
-      // Remote network callers are NEVER granted owner privilege to bypass device-level share ACLs.
-      if (isLoopbackRequest(req)) {
-        return { kind: "owner" };
-      }
-      // Network requests carrying an ownerKey fall through to be verified strictly as paired devices.
+      return { kind: "owner" };
     }
   }
 
