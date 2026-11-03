@@ -1,5 +1,5 @@
 import { ensureSeeded } from "@/lib/localdock/seed";
-import { getSettings, pickPrimaryLanIp, serverBaseUrlFrom, VERSION, isLoopbackRequest } from "@/lib/localdock/registry";
+import { getSettings, pickPrimaryLanIp, serverBaseUrlFrom, VERSION, isLocalOrHostRequest } from "@/lib/localdock/registry";
 import { jsonOk } from "@/lib/localdock/files";
 import { DESKTOP_MODE } from "@/lib/localdock/store";
 import { getAuth } from "@/lib/localdock/auth";
@@ -16,7 +16,7 @@ export async function GET(req: Request) {
   await ensureSeeded();
   const settings = getSettings();
   const lanIp = pickPrimaryLanIp();
-  const isLoopback = isLoopbackRequest(req);
+  const isLoopback = isLocalOrHostRequest(req);
   const auth = getAuth(req);
   const allowOwner = isLoopback || !!settings.allowRemoteOwner || auth.kind === "owner";
 

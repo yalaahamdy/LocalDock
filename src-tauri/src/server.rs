@@ -24,6 +24,14 @@ pub struct ServerHandle {
 impl ServerHandle {
     /// Terminate the bundled server. Idempotent.
     pub fn kill(&mut self) {
+        #[cfg(windows)]
+        {
+            let pid = self.child.id();
+            let _ = Command::new("taskkill")
+                .args(&["/F", "/T", "/PID", &pid.to_string()])
+                .creation_flags(CREATE_NO_WINDOW)
+                .output();
+        }
         let _ = self.child.kill();
         let _ = self.child.wait();
     }
@@ -86,7 +94,29 @@ pub fn resource_paths() -> Result<(PathBuf, PathBuf), String> {
 }
 
 /// Spawn the bundled LocalDock server in desktop mode.
+#[cfg(windows)]
+fn kill_stale_server_processes() {
+    let script = r#"
+        $proc = Get-NetTCPConnection -LocalPort 3000 -State Listen -ErrorAction SilentlyContinue | Select-Object -ExpandProperty OwningProcess -First 1
+        if ($proc) {
+            $p = Get-Process -Id $proc -ErrorAction SilentlyContinue
+            if ($p -and $p.ProcessName -eq "node") {
+                Stop-Process -Id $proc -Force -ErrorAction SilentlyContinue
+            }
+        }
+    "#;
+    let _ = Command::new("powershell")
+        .args(&["-NoProfile", "-NonInteractive", "-Command", script])
+        .creation_flags(CREATE_NO_WINDOW)
+        .output();
+    std::thread::sleep(Duration::from_millis(150));
+}
+
+/// Spawn the bundled LocalDock server in desktop mode.
 pub fn spawn_server() -> Result<ServerHandle, String> {
+    #[cfg(windows)]
+    kill_stale_server_processes();
+
     let (server_dir, node_exe) = resource_paths()?;
     let port = find_free_port(3000);
     if port == 0 {

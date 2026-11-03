@@ -25,7 +25,7 @@ import type {
   Website,
 } from "./types";
 
-export const VERSION = "1.3.2";
+export const VERSION = "1.3.4";
 export const STARTED_AT = Date.now();
 
 /* ------------------------------------------------------------------ */
@@ -469,6 +469,21 @@ export function isLoopbackRequest(req: Request): boolean {
   const host = req.headers.get("host") ?? "";
   const hostName = host.split(":")[0].toLowerCase();
   return isLoopbackIp(hostName);
+}
+
+export function isLocalOrHostRequest(req: Request): boolean {
+  if (isLoopbackRequest(req)) return true;
+  const host = req.headers.get("host") ?? "";
+  const hostName = host.split(":")[0].toLowerCase().trim();
+  const ifaces = networkInterfaces();
+  const isHostLanIp = ifaces.some((i) => i.address.toLowerCase() === hostName);
+  const fwd = req.headers.get("x-forwarded-for") ?? req.headers.get("x-real-ip") ?? "";
+  const clientIp = fwd ? fwd.split(",")[0].trim().toLowerCase() : "";
+  const isClientLocal =
+    !clientIp ||
+    isLoopbackIp(clientIp) ||
+    ifaces.some((i) => i.address.toLowerCase() === clientIp);
+  return isHostLanIp && isClientLocal;
 }
 
 export function isPrivateIp(ip: string): boolean {

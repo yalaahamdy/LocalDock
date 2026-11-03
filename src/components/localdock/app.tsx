@@ -144,10 +144,10 @@ export default function LocalDockApp() {
     return <GuestView slug={guestSlug} />;
   }
 
-  if (mode === "pair-claim" && pairCode) {
+  if (mode === "pair-claim") {
     return (
       <PairClaimView
-        code={pairCode}
+        code={pairCode ?? ""}
         onDone={() => {
           setPairCode(null);
           setMode("boot");
